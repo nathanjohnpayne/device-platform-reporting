@@ -12,9 +12,9 @@ Replaces 30–45 minutes of manual Monday-morning work with a 5-minute upload-an
 | Workflow | Frequency | Source | What it generates |
 |---|---|---|---|
 | Playback Performance | Weekly | Conviva CSV | VSF-T, VPF-T, Attempts, Unique Devices charts + narrative |
-| ADK Version Share | Weekly | Conviva CSV | Pie chart, % breakdown per ADK version |
-| Partner Migration | Weekly | Sentry CSV | Partner migration table, legacy % per partner |
-| Platform KPIs | Monthly | Looker CSV | MAU, MAD, HPV by platform (PS, Xbox, ADK) with MoM % |
+| ADK Version Share | Weekly | Conviva CSV | Latest-snapshot pie chart, 30-day trend, % breakdown per ADK version |
+| Partner Migration | Weekly | Sentry CSV | Partner migration table, configurable legacy threshold, notes block |
+| Platform KPIs | Monthly | Looker ZIP / CSV | MAU, MAD, Playback Hours, HPV by platform (PS, Xbox, ADK) with MoM % |
 | Regional KPIs | Monthly | Looker CSV | MAU, MAD, Playback Hours by region with MoM % |
 | ADK Version Manager | Admin | Firestore | Add/edit ADK version → core_version mappings |
 
@@ -97,6 +97,15 @@ Add `localhost` in Firebase Console → Authentication → Settings → Authoriz
 
 ---
 
+## Current architecture
+
+- Client-only React app hosted on Firebase Hosting
+- CSV and ZIP processing happens in the browser
+- Firebase Authentication + Firestore provide auth and persistence
+- No Cloud Functions or backend ingestion pipeline in this repo
+
+---
+
 ## ADK Version Manager — first run
 
 1. Navigate to **ADK Version Manager** in the sidebar.
@@ -113,9 +122,9 @@ Add `localhost` in Firebase Console → Authentication → Settings → Authoriz
 
 **Time: ~5 minutes, before the 10:00 AM PT meeting**
 
-1. **Playback Performance** — Export CSV from [Conviva Playback Performance](https://pulse.conviva.com/app/custom-dashboards/dashboard/48643?data-source=ei) (last 30 days) → upload → copy to Confluence.
-2. **ADK Version Share** — Export CSV from [Conviva ADK Version Comparisons](https://pulse.conviva.com/app/custom-dashboards/dashboard/28764?data-source=ei) (last 30 days) → upload → copy pie chart + text to Confluence.
-3. **Partner Migration** — Export CSV from [Sentry ADK Partner–Device Combinations](https://disney.my.sentry.io/organizations/disney/explore/discover/results/?field=partner&field=device&field=core_version&field=count_unique%28device_id%29&field=count%28%29&sort=-count_unique_device_id&statsPeriod=24h) (last 24h, tabular view) → upload → copy notes to Confluence.
+1. **Playback Performance** — Export CSV from [Conviva Playback Performance](https://pulse.conviva.com/app/custom-dashboards/dashboard/48643?data-source=ei) (last 30 days) → upload → review the four metric sections and generated narrative → copy to Confluence.
+2. **ADK Version Share** — Export CSV from [Conviva ADK Version Comparisons](https://pulse.conviva.com/app/custom-dashboards/dashboard/28764?data-source=ei) (last 30 days) → upload → review latest pie chart and 30-day trend → copy to Confluence.
+3. **Partner Migration** — Export CSV from [Sentry ADK Partner–Device Combinations](https://disney.my.sentry.io/organizations/disney/explore/discover/results/?field=partner&field=device&field=core_version&field=count_unique%28device_id%29&field=count%28%29&sort=-count_unique_device_id&statsPeriod=24h) (last 24h, tabular view) → upload → adjust thresholds if needed → copy notes to Confluence.
 
 ---
 
@@ -123,8 +132,8 @@ Add `localhost` in Firebase Console → Authentication → Settings → Authoriz
 
 **Run at the end of each month**
 
-1. **Platform KPIs** — Download zip from [Looker D+ Device Health Dashboard](https://looker.disneystreaming.com/dashboards/11169?Date+Granularity=monthly&Date+Range=1+month+ago+for+1+month&Device+Family=rust) (Device Family=rust, last complete month) → upload 3 CSVs → copy table to Confluence.
-2. **Regional KPIs** — Same Looker dashboard, filtered by each region (APAC, DOMESTIC, EMEA, LATAM) → upload one CSV per region → copy table + pie chart to Confluence.
+1. **Platform KPIs** — Download zip from [Looker D+ Device Health Dashboard](https://looker.disneystreaming.com/dashboards/11169?Date+Granularity=monthly&Date+Range=1+month+ago+for+1+month&Device+Family=rust) (Device Family=rust, last complete month) → upload the ZIP directly, or upload the three extracted CSVs manually → review MAU/MAD/Playback Hours/HPV and MoM output → copy to Confluence.
+2. **Regional KPIs** — Same Looker dashboard, filtered by each region (APAC, DOMESTIC, EMEA, LATAM) → upload one CSV per region → review regional MoM table + MAU share pie chart → copy to Confluence.
 
 ---
 
@@ -132,11 +141,23 @@ Add `localhost` in Firebase Console → Authentication → Settings → Authoriz
 
 ```
 adkVersions/          — ADK version reference table (editable in app)
-weeklySnapshots/      — Playback Performance weekly uploads
-adkVersionShare/      — ADK Version Share weekly time series
-partnerMigration/     — Partner migration weekly snapshots
-monthlySnapshots/     — Platform and Regional KPI monthly uploads
+weeklySnapshots/      — Playback Performance uploads + generated narrative snapshot
+adkVersionShare/      — Weekly ADK version share history and saved trend data
+partnerMigration/     — Weekly partner migration snapshots + thresholds used
+monthlySnapshots/     — Computed platform/regional monthly series, summary rows, row counts
 ```
+
+---
+
+## Verification
+
+```bash
+npm run build
+```
+
+Notes:
+- `npm test` is currently a placeholder (`echo no tests`).
+- Production builds currently emit webpack bundle-size warnings, but they complete successfully.
 
 ---
 
