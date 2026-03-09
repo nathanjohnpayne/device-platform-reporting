@@ -7,16 +7,26 @@ import { initializeApp } from 'firebase/app';
 import { getAuth, GoogleAuthProvider } from 'firebase/auth';
 import { getFirestore } from 'firebase/firestore';
 import { getStorage } from 'firebase/storage';
-import { getAnalytics } from 'firebase/analytics';
+import { getAnalytics, isSupported as isAnalyticsSupported } from 'firebase/analytics';
+
+const DEFAULT_FIREBASE_CONFIG = {
+  apiKey: 'REDACTED_FIREBASE_API_KEY',
+  authDomain: 'device-platform-reporting.firebaseapp.com',
+  projectId: 'device-platform-reporting',
+  storageBucket: 'device-platform-reporting.firebasestorage.app',
+  messagingSenderId: '741928725277',
+  appId: '1:741928725277:web:d9c471f320391c502f0ff4',
+  measurementId: 'G-KPB589VPT4',
+};
 
 const firebaseConfig = {
-  apiKey:            process.env.REACT_APP_FIREBASE_API_KEY            || 'YOUR_API_KEY',
-  authDomain:        process.env.REACT_APP_FIREBASE_AUTH_DOMAIN        || 'device-platform-reporting.firebaseapp.com',
-  projectId:         process.env.REACT_APP_FIREBASE_PROJECT_ID         || 'device-platform-reporting',
-  storageBucket:     process.env.REACT_APP_FIREBASE_STORAGE_BUCKET     || 'device-platform-reporting.appspot.com',
-  messagingSenderId: process.env.REACT_APP_FIREBASE_MESSAGING_SENDER_ID || '741928725277',
-  appId:             process.env.REACT_APP_FIREBASE_APP_ID             || 'YOUR_APP_ID',
-  measurementId:     process.env.REACT_APP_FIREBASE_MEASUREMENT_ID     || 'YOUR_MEASUREMENT_ID',
+  apiKey: process.env.REACT_APP_FIREBASE_API_KEY || DEFAULT_FIREBASE_CONFIG.apiKey,
+  authDomain: process.env.REACT_APP_FIREBASE_AUTH_DOMAIN || DEFAULT_FIREBASE_CONFIG.authDomain,
+  projectId: process.env.REACT_APP_FIREBASE_PROJECT_ID || DEFAULT_FIREBASE_CONFIG.projectId,
+  storageBucket: process.env.REACT_APP_FIREBASE_STORAGE_BUCKET || DEFAULT_FIREBASE_CONFIG.storageBucket,
+  messagingSenderId: process.env.REACT_APP_FIREBASE_MESSAGING_SENDER_ID || DEFAULT_FIREBASE_CONFIG.messagingSenderId,
+  appId: process.env.REACT_APP_FIREBASE_APP_ID || DEFAULT_FIREBASE_CONFIG.appId,
+  measurementId: process.env.REACT_APP_FIREBASE_MEASUREMENT_ID || DEFAULT_FIREBASE_CONFIG.measurementId,
 };
 
 const app = initializeApp(firebaseConfig);
@@ -24,8 +34,18 @@ const app = initializeApp(firebaseConfig);
 export const auth     = getAuth(app);
 export const db       = getFirestore(app);
 export const storage  = getStorage(app);
-export const analytics = getAnalytics(app);
 export const googleProvider = new GoogleAuthProvider();
+export let analytics = null;
+
+isAnalyticsSupported()
+  .then((supported) => {
+    if (supported && firebaseConfig.measurementId) {
+      analytics = getAnalytics(app);
+    }
+  })
+  .catch(() => {
+    analytics = null;
+  });
 
 // Allowed email domains — enforced both here and in Firestore security rules
 export const ALLOWED_DOMAINS = ['disney.com', 'disneystreaming.com'];
