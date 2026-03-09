@@ -11,7 +11,13 @@ export function AuthProvider({ children }) {
   const [denied, setDenied]   = useState(false);
 
   useEffect(() => {
+    let active = true;
+    const loadingFallback = setTimeout(() => {
+      if (active) setLoading(false);
+    }, 4000);
+
     const unsub = onAuthStateChanged(auth, async (u) => {
+      clearTimeout(loadingFallback);
       if (u) {
         if (isAllowedEmail(u.email)) {
           setUser(u);
@@ -27,7 +33,11 @@ export function AuthProvider({ children }) {
       }
       setLoading(false);
     });
-    return unsub;
+    return () => {
+      active = false;
+      clearTimeout(loadingFallback);
+      unsub();
+    };
   }, []);
 
   const signIn = async () => {
