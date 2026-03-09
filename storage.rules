@@ -1,0 +1,15 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    function isAllowedUser() {
+      return request.auth != null
+        && (
+          request.auth.token.email.matches('.*@disney\\.com$')
+          || request.auth.token.email.matches('.*@disneystreaming\\.com$')
+        );
+    }
+    match /{allPaths=**} {
+      allow read, write: if isAllowedUser();
+    }
+  }
+}

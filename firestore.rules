@@ -1,0 +1,19 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ── Helper: only @disney.com and @disneystreaming.com users ──────────────
+    function isAllowedUser() {
+      return request.auth != null
+        && (
+          request.auth.token.email.matches('.*@disney\\.com$')
+          || request.auth.token.email.matches('.*@disneystreaming\\.com$')
+        );
+    }
+
+    // ── All collections: authenticated Disney users only ─────────────────────
+    match /{collection}/{document=**} {
+      allow read, write: if isAllowedUser();
+    }
+  }
+}

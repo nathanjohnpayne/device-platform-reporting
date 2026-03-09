@@ -1,0 +1,112 @@
+// pages/Dashboard.js
+import React from 'react';
+import { Link } from 'react-router-dom';
+import { useAuth } from '../hooks/useAuth';
+
+const workflows = [
+  {
+    to: '/playback-performance',
+    icon: '📊',
+    badge: 'Weekly',
+    badgeCls: 'badge-weekly',
+    title: 'Playback Performance',
+    desc: 'Upload Conviva CSV. Generates VSF-T, VPF-T, Attempts, and Unique Devices charts with narrative copy.',
+    source: 'Conviva',
+  },
+  {
+    to: '/adk-version-share',
+    icon: '🥧',
+    badge: 'Weekly',
+    badgeCls: 'badge-weekly',
+    title: 'ADK Version Share',
+    desc: 'Upload Conviva CSV. Generates ADK version pie chart, device share percentages, and Confluence-ready output.',
+    source: 'Conviva',
+  },
+  {
+    to: '/partner-migration',
+    icon: '🔄',
+    badge: 'Weekly',
+    badgeCls: 'badge-weekly',
+    title: 'Partner Migration Status',
+    desc: 'Upload Sentry CSV. Identifies partners with legacy ADK versions and calculates migration percentages.',
+    source: 'Sentry',
+  },
+  {
+    to: '/platform-kpis',
+    icon: '📈',
+    badge: 'Monthly',
+    badgeCls: 'badge-monthly',
+    title: 'Platform KPIs',
+    desc: 'Upload Looker CSVs. Builds MAU, MAD, HPV table by platform (PlayStation, Xbox, ADK) with MoM %.',
+    source: 'Looker',
+  },
+  {
+    to: '/regional-kpis',
+    icon: '🌍',
+    badge: 'Monthly',
+    badgeCls: 'badge-monthly',
+    title: 'Regional KPIs',
+    desc: 'Upload Looker CSVs. Builds MAU, MAD, Playback Hours by region (APAC, Domestic, EMEA, LATAM) with MoM %.',
+    source: 'Looker',
+  },
+  {
+    to: '/adk-versions',
+    icon: '⚙️',
+    badge: 'Admin',
+    badgeCls: 'badge-admin',
+    title: 'ADK Version Manager',
+    desc: 'Add or edit ADK version → core_version mappings used across all partner migration and version share workflows.',
+    source: 'Firestore',
+  },
+];
+
+export default function Dashboard() {
+  const { user } = useAuth();
+  const today = new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' });
+
+  return (
+    <div>
+      <div className="card" style={{ background: 'linear-gradient(135deg, #0f2744, #1e3a5f)', border: 'none', marginBottom: 24 }}>
+        <div style={{ color: 'rgba(255,255,255,0.6)', fontSize: 12, marginBottom: 6 }}>{today}</div>
+        <h2 style={{ color: '#fff', fontSize: 22, fontWeight: 700, marginBottom: 6 }}>
+          Good morning, {user?.displayName?.split(' ')[0] || 'there'} 👋
+        </h2>
+        <p style={{ color: 'rgba(255,255,255,0.65)', fontSize: 14, lineHeight: 1.6 }}>
+          NCP+ADK Program Weekly KPIs · Disney Streaming<br/>
+          Upload your exports below to generate Confluence-ready charts and tables.
+        </p>
+      </div>
+
+      <div className="alert alert-info">
+        ℹ️ <span><strong>Monday morning workflow:</strong> Run Playback Performance, ADK Version Share, and Partner Migration each week before the 10:00 AM PT program meeting. Platform and Regional KPIs are updated monthly.</span>
+      </div>
+
+      <div className="workflow-grid">
+        {workflows.map(w => (
+          <Link key={w.to} to={w.to} className="workflow-card">
+            <div className="workflow-card-icon">{w.icon}</div>
+            <h3>{w.title}</h3>
+            <p>{w.desc}</p>
+            <div className="workflow-card-footer">
+              <span className={`section-badge ${w.badgeCls}`}>{w.badge}</span>
+              <span className="text-muted">Source: {w.source} →</span>
+            </div>
+          </Link>
+        ))}
+      </div>
+
+      <div className="card" style={{ marginTop: 24 }}>
+        <div className="card-title">📚 Reference Links</div>
+        <div className="card-subtitle">Source dashboards for all data exports</div>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10 }}>
+          <a className="source-link" href="https://pulse.conviva.com/app/custom-dashboards/dashboard/48643?data-source=ei" target="_blank" rel="noreferrer">📊 Conviva: Playback Performance</a>
+          <a className="source-link" href="https://pulse.conviva.com/app/custom-dashboards/dashboard/28764?data-source=ei" target="_blank" rel="noreferrer">🥧 Conviva: ADK Version Comparisons</a>
+          <a className="source-link" href="https://looker.disneystreaming.com/dashboards/11169?Date+Granularity=monthly&Device+Family=rust" target="_blank" rel="noreferrer">📈 Looker: D+ Device Health Dashboard</a>
+          <a className="source-link" href="https://disney.my.sentry.io/organizations/disney/explore/discover/results/?field=partner&field=device&field=core_version&field=count_unique%28device_id%29&field=count%28%29&sort=-count_unique_device_id&statsPeriod=24h" target="_blank" rel="noreferrer">🔄 Sentry: ADK Partner-Device Combos</a>
+          <a className="source-link" href="https://docs.google.com/spreadsheets/d/1Ic6Uicee5VJezKn9BSYiSyb9BBKZjN04PGNI5Eqrml0/edit" target="_blank" rel="noreferrer">📋 Google Sheets: Historical KPIs</a>
+          <a className="source-link" href="https://docs.google.com/spreadsheets/d/1dDRQ9Mj0A6HGr4uiM-FoPOIGs6GxF2BRgk1MsSavGu8/edit" target="_blank" rel="noreferrer">📋 Google Sheets: ADK Adoption Burn Down</a>
+        </div>
+      </div>
+    </div>
+  );
+}
