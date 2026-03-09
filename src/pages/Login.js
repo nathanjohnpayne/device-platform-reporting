@@ -13,8 +13,11 @@ export default function Login() {
         <p>Disney Streaming · Partnerships &amp; Devices<br/>Sign in with your Disney or Disney Streaming account to continue.</p>
 
         {denied && (
-          <div className="alert alert-error" style={{ marginBottom: 20, textAlign: 'left' }}>
-            ⛔ Access restricted to <strong>@disney.com</strong> and <strong>@disneystreaming.com</strong> accounts only.
+          <div className="alert alert-error login-alert" style={{ marginBottom: 20, textAlign: 'left' }}>
+            <span className="alert-icon" aria-hidden="true">⛔</span>
+            <span className="alert-body">
+              Access restricted to <strong>@disney.com</strong> and <strong>@disneystreaming.com</strong> accounts only.
+            </span>
           </div>
         )}
 
