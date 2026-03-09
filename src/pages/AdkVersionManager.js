@@ -25,6 +25,10 @@ const SEED_VERSIONS = [
   { adkVersion: 'ADK 2.0',   coreVersions: '1.2.4',   releaseDate: '2021-10-27', features: 'Star+ support incl. Live TV (not released)', notes: '' },
 ];
 
+function parseCoreVersions(value = '') {
+  return value.split(',').map((item) => item.trim()).filter(Boolean);
+}
+
 export default function AdkVersionManager() {
   const [versions, setVersions] = useState([]);
   const [loading, setLoading]   = useState(true);
@@ -34,6 +38,14 @@ export default function AdkVersionManager() {
   const [saving, setSaving]     = useState(false);
   const [seeding, setSeeding]   = useState(false);
   const [deleteConfirm, setDeleteConfirm] = useState(null);
+
+  const parsedCoreVersions = parseCoreVersions(form.coreVersions);
+  const duplicateMappings = parsedCoreVersions
+    .map((coreVersion) => {
+      const existing = versions.find((version) => version.id !== editId && (version.coreVersions || []).includes(coreVersion));
+      return existing ? { coreVersion, existing } : null;
+    })
+    .filter(Boolean);
 
   const load = async () => {
     setLoading(true);
@@ -58,7 +70,7 @@ export default function AdkVersionManager() {
     setSaving(true);
     const payload = {
       adkVersion:   form.adkVersion.trim(),
-      coreVersions: form.coreVersions.split(',').map(s => s.trim()).filter(Boolean),
+      coreVersions: parsedCoreVersions,
       releaseDate:  form.releaseDate,
       features:     form.features.trim(),
       notes:        form.notes.trim(),
@@ -212,6 +224,28 @@ export default function AdkVersionManager() {
             <div className="form-group">
               <label className="form-label">Notes (e.g., "Current GA")</label>
               <input className="form-input" placeholder="e.g. Current GA, Deprecated, Beta only" value={form.notes} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} />
+            </div>
+
+            {duplicateMappings.length > 0 && (
+              <div className="alert alert-warning">
+                ⚠️ {duplicateMappings.map(({ coreVersion, existing }) => `${coreVersion} already maps to ${existing.adkVersion}`).join(' · ')}
+              </div>
+            )}
+
+            <div className="card" style={{ background: '#f8fafc', marginBottom: 20 }}>
+              <div className="card-title">Preview</div>
+              <div className="card-subtitle">This is how the mapping will be used by ADK Version Share and Partner Migration.</div>
+              <div style={{ marginBottom: 10, color: '#334155', fontSize: 13 }}>
+                <strong>{form.adkVersion || 'ADK Version label'}</strong> will map these Sentry values:
+              </div>
+              <div style={{ marginBottom: 12 }}>
+                {parsedCoreVersions.length > 0 ? parsedCoreVersions.map((coreVersion) => (
+                  <span key={coreVersion} className="tag" style={{ marginRight: 4, marginBottom: 4, display: 'inline-block' }}>{coreVersion}</span>
+                )) : <span className="text-muted">No core_version strings entered yet.</span>}
+              </div>
+              <div>
+                {/current|ga/i.test(form.notes || '') ? <span className="chip chip-green">Will be treated as Current GA</span> : <span className="chip chip-gray">Will be treated as Legacy</span>}
+              </div>
             </div>
 
             <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>

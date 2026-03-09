@@ -1,76 +1,91 @@
-// pages/PlatformKpis.js
 import React, { useState } from 'react';
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
+import { CartesianGrid, Legend, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
+import { addDoc, collection, serverTimestamp } from 'firebase/firestore';
 import UploadZone from '../components/UploadZone';
 import { db } from '../firebase';
-import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
+import { buildMonthlyDataset, buildSummaryRows, buildTrendData, parseLookerMetricRows, parseLookerZip } from '../utils/looker';
+import { compactNumber, formatChange, getChangeClass } from '../utils/reporting';
 
-const PLATFORMS = ['PlayStation', 'Xbox', 'ADK'];
-const COLORS    = { PlayStation: '#3b82f6', Xbox: '#10b981', ADK: '#f59e0b' };
+const PLATFORM_ORDER = ['PlayStation', 'Xbox', 'ADK'];
+const COLORS = { PlayStation: '#3b82f6', Xbox: '#10b981', ADK: '#f59e0b' };
+const CHART_METRICS = [
+  { key: 'mau', label: 'MAU', formatter: (value) => compactNumber(value, 1) },
+  { key: 'mad', label: 'MAD', formatter: (value) => compactNumber(value, 1) },
+  { key: 'hrs', label: 'Playback Hrs', formatter: (value) => compactNumber(value, 1) },
+  { key: 'hpv', label: 'HPV', formatter: (value) => value == null ? '—' : value.toFixed(2) },
+];
 
-function moM(curr, prev) {
-  if (!prev || prev === 0) return null;
-  const pct = ((curr - prev) / Math.abs(prev)) * 100;
-  return pct.toFixed(2) + '%';
-}
-
-function parseLookerRows(rows) {
-  // Looker exports vary in column names; we try to normalize
-  return rows.map(r => ({
-    month:         r['Month'] || r['month'] || r['Date'] || '',
-    platform:      r['Device Platform'] || r['platform'] || r['Platform'] || '',
-    activeAccounts: parseFloat(r['Total Active Accounts'] || r['active_accounts'] || r['Active Accounts'] || 0),
-    activeDevices:  parseFloat(r['Total Active Devices']  || r['active_devices']  || r['Active Devices']  || 0),
-    playbackHours:  parseFloat(r['Total Playback Hours']  || r['playback_hours']  || r['Playback Hours']  || 0),
-  }));
+function metricName(metric) {
+  return CHART_METRICS.find((item) => item.key === metric)?.label || metric;
 }
 
 export default function PlatformKpis() {
-  const [mauData,  setMauData]  = useState(null);
-  const [madData,  setMadData]  = useState(null);
-  const [hrsData,  setHrsData]  = useState(null);
-  const [kpis,     setKpis]     = useState(null);
-  const [saving,   setSaving]   = useState(false);
-  const [saved,    setSaved]    = useState(false);
-  const [copied,   setCopied]   = useState(false);
+  const [uploads, setUploads] = useState({ mau: null, mad: null, hrs: null });
+  const [chartMetric, setChartMetric] = useState('mau');
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+  const [copied, setCopied] = useState(false);
 
-  const process = (mau, mad, hrs) => {
-    if (!mau) return;
-    const parsed = parseLookerRows(mau);
-    // Group by platform, latest month
-    const byPlatform = {};
-    parsed.forEach(r => {
-      if (!byPlatform[r.platform]) byPlatform[r.platform] = [];
-      byPlatform[r.platform].push(r);
-    });
-    setKpis(byPlatform);
+  const metricRows = {
+    mau: parseLookerMetricRows(uploads.mau || [], 'mau', 'platform'),
+    mad: parseLookerMetricRows(uploads.mad || [], 'mad', 'platform'),
+    hrs: parseLookerMetricRows(uploads.hrs || [], 'hrs', 'platform'),
   };
 
-  const onMauParsed = (rows) => { setMauData(rows); setSaved(false); process(rows, madData, hrsData); };
-  const onMadParsed = (rows) => { setMadData(rows); setSaved(false); process(mauData, rows, hrsData); };
-  const onHrsParsed = (rows) => { setHrsData(rows); setSaved(false); process(mauData, madData, rows); };
+  const seriesByPlatform = buildMonthlyDataset(metricRows, PLATFORM_ORDER);
+  const summaryRows = buildSummaryRows(seriesByPlatform).filter((row) => row.current.mau != null || row.current.mad != null || row.current.hrs != null);
+  const trendData = buildTrendData(seriesByPlatform, chartMetric);
+  const ready = Boolean(uploads.mau && uploads.mad && uploads.hrs && summaryRows.length);
+
+  const setMetricUpload = (metricType) => (rows) => {
+    setSaved(false);
+    setUploads((prev) => ({ ...prev, [metricType]: rows }));
+  };
+
+  const handleZipUpload = async (file) => {
+    const files = await parseLookerZip(file);
+    const nextUploads = {};
+
+    files.forEach((entry) => {
+      if (entry.metricType) nextUploads[entry.metricType] = entry.rows;
+    });
+
+    if (!nextUploads.mau || !nextUploads.mad || !nextUploads.hrs) {
+      throw new Error('Zip did not include recognizable active accounts, active devices, and playback hours CSVs.');
+    }
+
+    setSaved(false);
+    setUploads((prev) => ({ ...prev, ...nextUploads }));
+    return {
+      status: 'ok',
+      message: `Loaded ${files.length} CSVs from ${file.name}`,
+    };
+  };
 
   const generateConfluence = () => {
-    if (!kpis) return '';
-    const lines = Object.entries(kpis).map(([platform, rows]) => {
-      const latest = rows[rows.length - 1];
-      const prev   = rows[rows.length - 2];
-      const mauMom = prev ? moM(latest.activeAccounts, prev.activeAccounts) : 'N/A';
-      return `${platform}: MAU ${latest.activeAccounts.toLocaleString()} (${mauMom} MoM) | MAD ${latest.activeDevices.toLocaleString()} | Playback Hrs ${latest.playbackHours.toLocaleString()}`;
-    }).join('\n');
-    const date = new Date().toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
-    return `<h3>Business KPIs / Program KPIs (D+) — ${date}</h3>\n${lines}`;
+    if (!summaryRows.length) return '';
+    const currentMonth = summaryRows[0]?.month || '';
+    const rows = summaryRows.map((row) => (
+      `${row.entity}: MAU ${compactNumber(row.current.mau, 2)} (${formatChange(row.mauMoM)}) | MAD ${compactNumber(row.current.mad, 2)} (${formatChange(row.madMoM)}) | Playback Hrs ${compactNumber(row.current.hrs, 2)} (${formatChange(row.hrsMoM)}) | HPV ${row.current.hpv?.toFixed(2) || '—'} (${formatChange(row.hpvMoM)})`
+    )).join('\n');
+    return `<h3>Business KPIs / Program KPIs (D+) — ${currentMonth}</h3>\n${rows}`;
   };
 
   const save = async () => {
+    if (!ready) return;
     setSaving(true);
     try {
       await addDoc(collection(db, 'monthlySnapshots'), {
-        type: 'platformKpis', month: new Date().toISOString().slice(0, 7),
-        mauData, madData, hrsData, uploadedAt: serverTimestamp(),
+        type: 'platformKpis',
+        month: summaryRows[0]?.month || new Date().toISOString().slice(0, 7),
+        uploads,
+        summaryRows,
+        uploadedAt: serverTimestamp(),
       });
       setSaved(true);
-    } catch (e) { console.error(e); }
+    } catch (e) {
+      console.error(e);
+    }
     setSaving(false);
   };
 
@@ -79,17 +94,6 @@ export default function PlatformKpis() {
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
-
-  const chartData = kpis
-    ? Object.entries(kpis).flatMap(([platform, rows]) =>
-        rows.map(r => ({ month: r.month, [platform]: r.activeAccounts }))
-      ).reduce((acc, r) => {
-        const existing = acc.find(x => x.month === r.month);
-        if (existing) Object.assign(existing, r);
-        else acc.push(r);
-        return acc;
-      }, [])
-    : [];
 
   return (
     <div>
@@ -103,43 +107,78 @@ export default function PlatformKpis() {
         <ol>
           <li>Open the <a href="https://looker.disneystreaming.com/dashboards/11169?Date+Granularity=monthly&Date+Range=1+month+ago+for+1+month&Device+Family=rust" target="_blank" rel="noreferrer">D+ Device Health & Status Dashboard V2.0</a>.</li>
           <li>Set <strong>Date Granularity</strong> = Monthly, <strong>Date Range</strong> = last 1 complete month, <strong>Device Family</strong> = rust.</li>
-          <li>Click <strong>Download (CSV)</strong> from the top-right menu. Open the zip and extract the files.</li>
-          <li>Upload each CSV below (active accounts, active devices, playback hours).</li>
+          <li>Download the Looker zip. Upload the zip directly below, or manually upload the three extracted CSVs if the file names are unusual.</li>
         </ol>
         <div style={{ marginTop: 12 }}>
           <a className="source-link" href="https://looker.disneystreaming.com/dashboards/11169?Date+Granularity=monthly&Date+Range=1+month+ago+for+1+month&Device+Family=rust" target="_blank" rel="noreferrer">🔗 Open Looker Dashboard</a>
         </div>
       </div>
 
+      <div className="card">
+        <div className="card-title">Upload Looker Zip</div>
+        <div className="card-subtitle">Preferred path. The app will detect active accounts, active devices, and playback hours CSVs automatically.</div>
+        <UploadZone label="Drop Looker ZIP here" hint="Upload the zipped Looker export" accept=".zip" onFileSelected={handleZipUpload} />
+      </div>
+
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 16, marginBottom: 20 }}>
         <div className="card" style={{ marginBottom: 0 }}>
-          <div className="card-title" style={{ marginBottom: 12 }}>Active Accounts CSV</div>
-          <UploadZone label="active_accounts.csv" onParsed={onMauParsed} />
+          <div className="flex-between" style={{ marginBottom: 12 }}>
+            <div className="card-title" style={{ marginBottom: 0 }}>Active Accounts CSV</div>
+            {uploads.mau ? <span className="chip chip-green">Loaded</span> : <span className="chip chip-gray">Pending</span>}
+          </div>
+          <UploadZone label="active_accounts.csv" onParsed={setMetricUpload('mau')} />
         </div>
         <div className="card" style={{ marginBottom: 0 }}>
-          <div className="card-title" style={{ marginBottom: 12 }}>Active Devices CSV</div>
-          <UploadZone label="active_devices.csv" onParsed={onMadParsed} />
+          <div className="flex-between" style={{ marginBottom: 12 }}>
+            <div className="card-title" style={{ marginBottom: 0 }}>Active Devices CSV</div>
+            {uploads.mad ? <span className="chip chip-green">Loaded</span> : <span className="chip chip-gray">Pending</span>}
+          </div>
+          <UploadZone label="active_devices.csv" onParsed={setMetricUpload('mad')} />
         </div>
         <div className="card" style={{ marginBottom: 0 }}>
-          <div className="card-title" style={{ marginBottom: 12 }}>Playback Hours CSV</div>
-          <UploadZone label="playback_hours.csv" onParsed={onHrsParsed} />
+          <div className="flex-between" style={{ marginBottom: 12 }}>
+            <div className="card-title" style={{ marginBottom: 0 }}>Playback Hours CSV</div>
+            {uploads.hrs ? <span className="chip chip-green">Loaded</span> : <span className="chip chip-gray">Pending</span>}
+          </div>
+          <UploadZone label="playback_hours.csv" onParsed={setMetricUpload('hrs')} />
         </div>
       </div>
 
-      {kpis && (
+      {summaryRows.length > 0 && (
         <>
-          <div className="alert alert-success">✅ Platform KPIs loaded. Review below, then save and copy to Confluence.</div>
+          <div className="alert alert-success">
+            ✅ Platform KPIs loaded for {summaryRows[0]?.month}. MAU, MAD, Playback Hours, and HPV are merged across the three Looker exports.
+          </div>
 
           <div className="card">
-            <div className="card-title">📈 NCP+ADK Monthly Active Users</div>
-            <ResponsiveContainer width="100%" height={240}>
-              <LineChart data={chartData}>
+            <div className="flex-between" style={{ marginBottom: 16 }}>
+              <div>
+                <div className="card-title">📈 Trend Chart</div>
+                <div className="card-subtitle">Switch between MAU, MAD, Playback Hours, and HPV</div>
+              </div>
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                {CHART_METRICS.map((metric) => (
+                  <button
+                    key={metric.key}
+                    className={`btn ${chartMetric === metric.key ? 'btn-primary' : 'btn-secondary'} btn-sm`}
+                    onClick={() => setChartMetric(metric.key)}
+                  >
+                    {metric.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <ResponsiveContainer width="100%" height={260}>
+              <LineChart data={trendData}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
-                <XAxis dataKey="month" tick={{ fontSize: 10 }} />
-                <YAxis tickFormatter={v => (v/1e6).toFixed(1)+'M'} tick={{ fontSize: 10 }} />
-                <Tooltip formatter={v => v.toLocaleString()} />
+                <XAxis dataKey="label" tick={{ fontSize: 10 }} />
+                <YAxis tick={{ fontSize: 10 }} tickFormatter={CHART_METRICS.find((metric) => metric.key === chartMetric)?.formatter} />
+                <Tooltip formatter={CHART_METRICS.find((metric) => metric.key === chartMetric)?.formatter} />
                 <Legend wrapperStyle={{ fontSize: 12 }} />
-                {PLATFORMS.map(p => <Line key={p} type="monotone" dataKey={p} stroke={COLORS[p]} strokeWidth={2} dot={false} />)}
+                {PLATFORM_ORDER.filter((platform) => summaryRows.some((row) => row.entity === platform)).map((platform) => (
+                  <Line key={platform} type="monotone" dataKey={platform} stroke={COLORS[platform]} strokeWidth={2} dot={false} />
+                ))}
               </LineChart>
             </ResponsiveContainer>
           </div>
@@ -148,38 +187,43 @@ export default function PlatformKpis() {
             <div className="card-title">📊 KPI Summary Table</div>
             <table className="data-table">
               <thead>
-                <tr><th>Platform</th><th>MAU</th><th>MoM</th><th>MAD</th><th>MoM</th><th>Playback Hrs</th><th>MoM</th></tr>
+                <tr>
+                  <th>Platform</th>
+                  <th>MAU</th>
+                  <th>MoM</th>
+                  <th>MAD</th>
+                  <th>MoM</th>
+                  <th>Playback Hrs</th>
+                  <th>MoM</th>
+                  <th>HPV</th>
+                  <th>MoM</th>
+                </tr>
               </thead>
               <tbody>
-                {Object.entries(kpis).map(([platform, rows]) => {
-                  const curr = rows[rows.length - 1];
-                  const prev = rows[rows.length - 2];
-                  const mauMom = prev ? moM(curr.activeAccounts, prev.activeAccounts) : null;
-                  const madMom = prev ? moM(curr.activeDevices, prev.activeDevices) : null;
-                  const hrsMom = prev ? moM(curr.playbackHours, prev.playbackHours) : null;
-                  const cls = v => v && v.startsWith('-') ? 'neg' : 'pos';
-                  return (
-                    <tr key={platform}>
-                      <td style={{ fontWeight: 700 }}>{platform}</td>
-                      <td className="num">{curr.activeAccounts.toLocaleString()}</td>
-                      <td className={cls(mauMom)}>{mauMom || '—'}</td>
-                      <td className="num">{curr.activeDevices.toLocaleString()}</td>
-                      <td className={cls(madMom)}>{madMom || '—'}</td>
-                      <td className="num">{curr.playbackHours.toLocaleString()}</td>
-                      <td className={cls(hrsMom)}>{hrsMom || '—'}</td>
-                    </tr>
-                  );
-                })}
+                {summaryRows.map((row) => (
+                  <tr key={row.entity}>
+                    <td style={{ fontWeight: 700 }}>{row.entity}</td>
+                    <td className="num">{row.current.mau?.toLocaleString() || '—'}</td>
+                    <td className={getChangeClass(row.mauMoM)}>{formatChange(row.mauMoM)}</td>
+                    <td className="num">{row.current.mad?.toLocaleString() || '—'}</td>
+                    <td className={getChangeClass(row.madMoM)}>{formatChange(row.madMoM)}</td>
+                    <td className="num">{row.current.hrs?.toLocaleString() || '—'}</td>
+                    <td className={getChangeClass(row.hrsMoM)}>{formatChange(row.hrsMoM)}</td>
+                    <td className="num">{row.current.hpv?.toFixed(2) || '—'}</td>
+                    <td className={getChangeClass(row.hpvMoM)}>{formatChange(row.hpvMoM)}</td>
+                  </tr>
+                ))}
               </tbody>
             </table>
           </div>
 
           <div className="card">
             <div className="card-title">🚀 Confluence Output</div>
+            <div className="card-subtitle">Paste into the Business KPIs / Program KPIs (D+) section.</div>
             <div className="output-preview">{generateConfluence()}</div>
             <div className="output-actions">
               <button className="btn btn-primary" onClick={copy}>{copied ? '✅ Copied!' : '📋 Copy to Clipboard'}</button>
-              <button className="btn btn-secondary" onClick={save} disabled={saving || saved}>
+              <button className="btn btn-secondary" onClick={save} disabled={saving || saved || !ready}>
                 {saved ? '✅ Saved' : saving ? <><span className="spinner" /> Saving…</> : '💾 Save to History'}
               </button>
             </div>

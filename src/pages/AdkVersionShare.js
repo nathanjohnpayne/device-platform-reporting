@@ -1,81 +1,133 @@
-// pages/AdkVersionShare.js
-import React, { useState, useEffect } from 'react';
-import { PieChart, Pie, Cell, Tooltip, Legend, ResponsiveContainer, LineChart, Line, XAxis, YAxis, CartesianGrid } from 'recharts';
+import React, { useEffect, useState } from 'react';
+import { CartesianGrid, Cell, Legend, Line, LineChart, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
+import { addDoc, collection, getDocs, orderBy, query, serverTimestamp } from 'firebase/firestore';
 import UploadZone from '../components/UploadZone';
 import { db } from '../firebase';
-import { collection, getDocs, addDoc, serverTimestamp, query, orderBy } from 'firebase/firestore';
+import {
+  compactNumber,
+  compareDateValues,
+  formatDateLabel,
+  formatPercent,
+  getFieldValue,
+  guessDateKey,
+  normalizeDateValue,
+  parseNumber,
+  safePercent,
+} from '../utils/reporting';
 
-const COLORS = ['#1e3a8a', '#7c3aed', '#f59e0b', '#10b981', '#ec4899'];
-const ADK_LABELS = ['ADK 3.0.1', 'ADK 3.1.0', 'ADK 3.1.1', 'ADK 4.0'];
+const COLORS = ['#1e3a8a', '#7c3aed', '#f59e0b', '#10b981', '#ec4899', '#14b8a6'];
 
-function pct(v, total) { return total ? ((v / total) * 100).toFixed(1) + '%' : '0%'; }
+function buildVersionShare(rows, adkMap) {
+  if (!rows?.length) {
+    return { latestLabel: '', pieData: [], trendData: [], uploadLabels: [] };
+  }
+
+  const dateKey = guessDateKey(rows[0]);
+  const grouped = {};
+
+  rows.forEach((row, index) => {
+    const rawDate = dateKey ? row[dateKey] : '';
+    const normalizedDate = normalizeDateValue(rawDate) || `snapshot-${String(index + 1).padStart(2, '0')}`;
+    const coreVersion = getFieldValue(row, ['core_version', 'core version', 'ADK Version', 'adk_version']);
+    const label = adkMap[coreVersion] || coreVersion || 'Unknown';
+    const count = parseNumber(getFieldValue(row, ['count_unique_device_id', 'Unique Devices', 'unique_devices', 'devices', 'Unique Devices With Attempts']));
+
+    if (count == null) return;
+    if (!grouped[normalizedDate]) {
+      grouped[normalizedDate] = {
+        date: normalizedDate,
+        label: rawDate ? formatDateLabel(rawDate) : `Point ${index + 1}`,
+        total: 0,
+      };
+    }
+
+    grouped[normalizedDate][label] = (grouped[normalizedDate][label] || 0) + count;
+    grouped[normalizedDate].total += count;
+  });
+
+  const trendData = Object.values(grouped).sort((left, right) => compareDateValues(left.date, right.date));
+  const uploadLabels = [...new Set(trendData.flatMap((row) => Object.keys(row).filter((key) => !['date', 'label', 'total'].includes(key))))];
+  const latest = trendData[trendData.length - 1] || { total: 0 };
+  const latestLabel = latest.label || '';
+
+  const pieData = uploadLabels
+    .map((name) => {
+      const value = latest[name] || 0;
+      const pct = safePercent(value, latest.total);
+      return { name, value, pct: pct == null ? '0%' : formatPercent(pct, 1) };
+    })
+    .filter((row) => row.value > 0)
+    .sort((left, right) => right.value - left.value);
+
+  return { latestLabel, pieData, trendData, uploadLabels };
+}
 
 export default function AdkVersionShare() {
-  const [data, setData]         = useState(null);
-  const [adkMap, setAdkMap]     = useState({});
-  const [pieData, setPieData]   = useState([]);
-  const [history, setHistory]   = useState([]);
-  const [saving, setSaving]     = useState(false);
-  const [saved, setSaved]       = useState(false);
-  const [copied, setCopied]     = useState(false);
+  const [data, setData] = useState(null);
+  const [adkMap, setAdkMap] = useState({});
+  const [history, setHistory] = useState([]);
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+  const [copied, setCopied] = useState(false);
 
-  // Load ADK version map from Firestore
   useEffect(() => {
-    getDocs(collection(db, 'adkVersions')).then(snap => {
-      const map = {};
-      snap.forEach(d => {
-        const v = d.data();
-        // Map each core_version string to its ADK label
-        (v.coreVersions || [v.coreVersion]).forEach(cv => { map[cv] = v.adkVersion; });
-      });
-      setAdkMap(map);
-    }).catch(console.error);
+    getDocs(collection(db, 'adkVersions'))
+      .then((snap) => {
+        const map = {};
+        snap.forEach((docSnap) => {
+          const version = docSnap.data();
+          (version.coreVersions || [version.coreVersion]).forEach((coreVersion) => {
+            if (coreVersion) map[coreVersion] = version.adkVersion;
+          });
+        });
+        setAdkMap(map);
+      })
+      .catch(console.error);
 
-    // Load history
-    getDocs(query(collection(db, 'adkVersionShare'), orderBy('weekOf', 'desc'))).then(snap => {
-      setHistory(snap.docs.map(d => ({ id: d.id, ...d.data() })).reverse());
-    }).catch(console.error);
+    getDocs(query(collection(db, 'adkVersionShare'), orderBy('weekOf', 'desc')))
+      .then((snap) => {
+        setHistory(snap.docs.map((docSnap) => ({ id: docSnap.id, ...docSnap.data() })).reverse());
+      })
+      .catch(console.error);
   }, []);
 
-  const onParsed = (rows, fields) => {
+  const analysis = buildVersionShare(data, adkMap);
+
+  const onParsed = (rows) => {
     setSaved(false);
     setData(rows);
-
-    // Group by core_version / ADK label
-    const counts = {};
-    let total = 0;
-    rows.forEach(r => {
-      const cv = r['core_version'] || r['ADK Version'] || '';
-      const label = adkMap[cv] || cv || 'Unknown';
-      const cnt = parseInt(r['count_unique_device_id'] || r['Unique Devices'] || r['devices'] || 0);
-      counts[label] = (counts[label] || 0) + cnt;
-      total += cnt;
-    });
-
-    setPieData(
-      Object.entries(counts)
-        .sort((a, b) => b[1] - a[1])
-        .map(([name, value]) => ({ name, value, pct: pct(value, total) }))
-    );
   };
 
   const saveToFirestore = async () => {
-    if (!pieData.length) return;
+    if (!analysis.pieData.length) return;
     setSaving(true);
     try {
       const weekOf = new Date().toISOString().slice(0, 10);
-      const entry = { weekOf, shares: pieData, uploadedAt: serverTimestamp() };
+      const entry = {
+        weekOf,
+        latestLabel: analysis.latestLabel,
+        shares: analysis.pieData,
+        trendData: analysis.trendData,
+        uploadedAt: serverTimestamp(),
+      };
       await addDoc(collection(db, 'adkVersionShare'), entry);
-      setHistory(prev => [...prev, entry]);
+      setHistory((prev) => [...prev, entry]);
       setSaved(true);
-    } catch (e) { console.error(e); }
+    } catch (e) {
+      console.error(e);
+    }
     setSaving(false);
   };
 
   const generateConfluence = () => {
-    const lines = pieData.map(d => `${d.name}: ${d.pct} (${d.value.toLocaleString()} unique devices)`).join('\n');
-    const date = new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-    return `<h3>ADK Version Share — Updated: ${date}</h3>\n${lines}\n\n<!-- Pie chart image: download from the app and attach here -->`;
+    if (!analysis.pieData.length) return '';
+    const lines = analysis.pieData
+      .map((item) => `<li>${item.name}: <strong>${item.pct}</strong> (${item.value.toLocaleString()} unique devices)</li>`)
+      .join('');
+
+    return `<h3>ADK Version Share</h3>
+<p>Latest Conviva point: ${analysis.latestLabel}</p>
+<ul>${lines}</ul>`;
   };
 
   const copy = () => {
@@ -96,9 +148,8 @@ export default function AdkVersionShare() {
         <ol>
           <li>Open the <a href="https://pulse.conviva.com/app/custom-dashboards/dashboard/28764?data-source=ei" target="_blank" rel="noreferrer">Conviva: NCP+ADK ADK Version Comparisons (D+)</a> dashboard.</li>
           <li>Set the date range to <strong>Last 30 days</strong>.</li>
-          <li>Go to the <strong>Unique Devices With Attempts</strong> chart. Mouse over <strong>yesterday's</strong> data point and note the values per ADK version.</li>
-          <li>Export the data as CSV.</li>
-          <li>Upload below. The app maps <code>core_version</code> strings to ADK labels automatically using the <a href="/adk-versions">ADK Version Manager</a>.</li>
+          <li>Export the chart data as CSV and upload below. The app will map each <code>core_version</code> value to a configured ADK label.</li>
+          <li>Use the pie chart for the latest snapshot and the line chart for the 30-day trend.</li>
         </ol>
         <div style={{ marginTop: 12, display: 'flex', gap: 10, flexWrap: 'wrap' }}>
           <a className="source-link" href="https://pulse.conviva.com/app/custom-dashboards/dashboard/28764?data-source=ei" target="_blank" rel="noreferrer">🔗 Open Conviva Dashboard</a>
@@ -108,7 +159,7 @@ export default function AdkVersionShare() {
 
       {Object.keys(adkMap).length === 0 && (
         <div className="alert alert-warning">
-          ⚠️ No ADK version mappings found. <a href="/adk-versions" style={{ fontWeight: 600 }}>Add mappings in ADK Version Manager</a> before uploading to ensure core_version strings are mapped correctly.
+          ⚠️ No ADK version mappings found. Add mappings in <a href="/adk-versions" style={{ fontWeight: 600 }}>ADK Version Manager</a> so core_version strings resolve correctly.
         </div>
       )}
 
@@ -118,19 +169,22 @@ export default function AdkVersionShare() {
         <UploadZone label="Drop Conviva ADK Version Share CSV here" onParsed={onParsed} />
       </div>
 
-      {pieData.length > 0 && (
+      {analysis.pieData.length > 0 && (
         <>
-          <div className="alert alert-success">✅ Version share calculated from {data.length} rows.</div>
+          <div className="alert alert-success">
+            ✅ Version share calculated from {data.length} rows. Latest snapshot: {analysis.latestLabel}.
+          </div>
 
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20 }}>
             <div className="card">
-              <div className="card-title">🥧 ADK Version Share</div>
+              <div className="card-title">🥧 Latest ADK Version Share</div>
+              <div className="card-subtitle">Latest point from the uploaded 30-day export</div>
               <ResponsiveContainer width="100%" height={260}>
                 <PieChart>
-                  <Pie data={pieData} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={90} label={({ name, pct }) => `${name}: ${pct}`} labelLine={false}>
-                    {pieData.map((_, i) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
+                  <Pie data={analysis.pieData} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={90} label={({ name, pct }) => `${name}: ${pct}`} labelLine={false}>
+                    {analysis.pieData.map((_, index) => <Cell key={index} fill={COLORS[index % COLORS.length]} />)}
                   </Pie>
-                  <Tooltip formatter={(v) => v.toLocaleString()} />
+                  <Tooltip formatter={(value) => compactNumber(value, 1)} />
                   <Legend wrapperStyle={{ fontSize: 12 }} />
                 </PieChart>
               </ResponsiveContainer>
@@ -139,13 +193,19 @@ export default function AdkVersionShare() {
             <div className="card">
               <div className="card-title">📊 Version Breakdown</div>
               <table className="data-table">
-                <thead><tr><th>ADK Version</th><th>Unique Devices</th><th>Share</th></tr></thead>
+                <thead>
+                  <tr>
+                    <th>ADK Version</th>
+                    <th>Unique Devices</th>
+                    <th>Share</th>
+                  </tr>
+                </thead>
                 <tbody>
-                  {pieData.map((d, i) => (
-                    <tr key={i}>
-                      <td><span style={{ display:'inline-block', width:10, height:10, borderRadius:2, background:COLORS[i%COLORS.length], marginRight:6 }} />{d.name}</td>
-                      <td className="num">{d.value.toLocaleString()}</td>
-                      <td><strong>{d.pct}</strong></td>
+                  {analysis.pieData.map((item, index) => (
+                    <tr key={item.name}>
+                      <td><span style={{ display: 'inline-block', width: 10, height: 10, borderRadius: 2, background: COLORS[index % COLORS.length], marginRight: 6 }} />{item.name}</td>
+                      <td className="num">{item.value.toLocaleString()}</td>
+                      <td><strong>{item.pct}</strong></td>
                     </tr>
                   ))}
                 </tbody>
@@ -153,18 +213,44 @@ export default function AdkVersionShare() {
             </div>
           </div>
 
+          <div className="card">
+            <div className="card-title">📈 Unique Devices With Attempts Trend</div>
+            <div className="card-subtitle">30-day series from the uploaded Conviva export</div>
+            <ResponsiveContainer width="100%" height={260}>
+              <LineChart data={analysis.trendData}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
+                <XAxis dataKey="label" tick={{ fontSize: 10 }} minTickGap={18} />
+                <YAxis tick={{ fontSize: 10 }} tickFormatter={(value) => compactNumber(value, 1)} />
+                <Tooltip formatter={(value) => compactNumber(value, 1)} />
+                <Legend wrapperStyle={{ fontSize: 12 }} />
+                {analysis.uploadLabels.map((label, index) => (
+                  <Line key={label} type="monotone" dataKey={label} name={label} stroke={COLORS[index % COLORS.length]} strokeWidth={2} dot={false} />
+                ))}
+              </LineChart>
+            </ResponsiveContainer>
+          </div>
+
           {history.length > 1 && (
             <div className="card">
-              <div className="card-title">📈 Historical Trend</div>
-              <ResponsiveContainer width="100%" height={200}>
+              <div className="card-title">🗂️ Weekly Saved History</div>
+              <div className="card-subtitle">Most recent saved weekly share snapshots</div>
+              <ResponsiveContainer width="100%" height={220}>
                 <LineChart data={history.slice(-12)}>
                   <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
                   <XAxis dataKey="weekOf" tick={{ fontSize: 10 }} />
                   <YAxis tick={{ fontSize: 10 }} unit="%" />
                   <Tooltip />
                   <Legend wrapperStyle={{ fontSize: 12 }} />
-                  {ADK_LABELS.map((lbl, i) => (
-                    <Line key={lbl} type="monotone" dataKey={d => (d.shares?.find(s => s.name === lbl)?.pct || '0').replace('%', '')} name={lbl} stroke={COLORS[i]} strokeWidth={2} dot={false} />
+                  {[...new Set(history.flatMap((entry) => (entry.shares || []).map((share) => share.name)))].map((label, index) => (
+                    <Line
+                      key={label}
+                      type="monotone"
+                      dataKey={(entry) => Number((entry.shares?.find((share) => share.name === label)?.pct || '0').replace('%', ''))}
+                      name={label}
+                      stroke={COLORS[index % COLORS.length]}
+                      strokeWidth={2}
+                      dot={false}
+                    />
                   ))}
                 </LineChart>
               </ResponsiveContainer>

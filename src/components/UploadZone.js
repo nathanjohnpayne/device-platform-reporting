@@ -2,23 +2,36 @@
 import React, { useRef, useState } from 'react';
 import Papa from 'papaparse';
 
-export default function UploadZone({ label, hint, expectedColumns, onParsed, accept = '.csv' }) {
+export default function UploadZone({ label, hint, expectedColumns, onParsed, onFileSelected, accept = '.csv' }) {
   const inputRef = useRef();
   const [drag, setDrag] = useState(false);
   const [status, setStatus] = useState(null); // null | 'ok' | 'error'
   const [message, setMessage] = useState('');
   const [filename, setFilename] = useState('');
 
-  const process = (file) => {
+  const process = async (file) => {
     if (!file) return;
     setFilename(file.name);
+
+    if (onFileSelected) {
+      try {
+        const result = await onFileSelected(file);
+        setStatus(result?.status || 'ok');
+        setMessage(result?.message || `${file.name} loaded`);
+      } catch (err) {
+        setStatus('error');
+        setMessage(err.message || 'Unable to process file');
+      }
+      return;
+    }
+
     Papa.parse(file, {
       header: true,
       skipEmptyLines: true,
       complete: ({ data, meta }) => {
         // Validate expected columns if provided
         if (expectedColumns) {
-          const missing = expectedColumns.filter(c => !meta.fields.includes(c));
+          const missing = expectedColumns.filter(c => !meta.fields?.includes(c));
           if (missing.length) {
             setStatus('error');
             setMessage(`Missing columns: ${missing.join(', ')}`);

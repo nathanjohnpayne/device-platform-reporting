@@ -1,68 +1,93 @@
-// pages/PartnerMigration.js
-import React, { useState, useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
+import { addDoc, collection, getDocs, serverTimestamp } from 'firebase/firestore';
 import UploadZone from '../components/UploadZone';
 import { db } from '../firebase';
-import { collection, getDocs, addDoc, serverTimestamp } from 'firebase/firestore';
+import { getFieldValue, parseNumber } from '../utils/reporting';
 
-const CURRENT_GA = 'ADK 3.1.1'; // Update when ADK 4.0 GA ships (23 Mar 2026)
-const MIN_DEVICES = 100;
+function deriveCurrentGa(versions) {
+  const explicit = versions.find((version) => /current|ga/i.test(version.notes || ''));
+  if (explicit?.adkVersion) return explicit.adkVersion;
+
+  const dated = [...versions].sort((left, right) => String(right.releaseDate || '').localeCompare(String(left.releaseDate || '')));
+  return dated[0]?.adkVersion || 'Unknown';
+}
+
+function buildPartnerSummary(rows, adkMap, currentGa, minDevices) {
+  if (!rows?.length) return [];
+
+  const partnerMap = {};
+  rows.forEach((row) => {
+    const partner = getFieldValue(row, ['partner', 'Partner']) || 'Unknown';
+    const coreVersion = getFieldValue(row, ['core_version', 'core version']);
+    const adkVersion = adkMap[coreVersion] || coreVersion || 'Unknown';
+    const count = parseNumber(getFieldValue(row, ['count_unique_device_id', 'unique_devices', 'Unique Devices'])) || 0;
+
+    if (!partnerMap[partner]) partnerMap[partner] = {};
+    partnerMap[partner][adkVersion] = (partnerMap[partner][adkVersion] || 0) + count;
+  });
+
+  return Object.entries(partnerMap)
+    .map(([partner, versions]) => {
+      const total = Object.values(versions).reduce((sum, value) => sum + value, 0);
+      if (total < minDevices) return null;
+      const legacyEntries = Object.entries(versions).filter(([version]) => version !== currentGa && version !== 'Unknown');
+      const legacyCount = legacyEntries.reduce((sum, [, value]) => sum + value, 0);
+      const legacyPct = total ? (legacyCount / total) * 100 : 0;
+      return {
+        partner,
+        versions,
+        total,
+        legacyCount,
+        legacyPct,
+      };
+    })
+    .filter(Boolean)
+    .sort((left, right) => right.legacyPct - left.legacyPct);
+}
 
 export default function PartnerMigration() {
-  const [data, setData]         = useState(null);
-  const [adkMap, setAdkMap]     = useState({});
-  const [partners, setPartners] = useState([]);
-  const [saving, setSaving]     = useState(false);
-  const [saved, setSaved]       = useState(false);
-  const [copied, setCopied]     = useState(false);
+  const [data, setData] = useState(null);
+  const [adkMap, setAdkMap] = useState({});
+  const [currentGa, setCurrentGa] = useState('Unknown');
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+  const [copied, setCopied] = useState(false);
+  const [config, setConfig] = useState({
+    minDevices: 100,
+    legacyAlertPct: 0,
+  });
 
   useEffect(() => {
-    getDocs(collection(db, 'adkVersions')).then(snap => {
-      const map = {};
-      snap.forEach(d => {
-        const v = d.data();
-        (v.coreVersions || [v.coreVersion]).forEach(cv => { if (cv) map[cv] = v.adkVersion; });
-      });
-      setAdkMap(map);
-    }).catch(console.error);
+    getDocs(collection(db, 'adkVersions'))
+      .then((snap) => {
+        const versions = snap.docs.map((docSnap) => docSnap.data());
+        const map = {};
+        versions.forEach((version) => {
+          (version.coreVersions || [version.coreVersion]).forEach((coreVersion) => {
+            if (coreVersion) map[coreVersion] = version.adkVersion;
+          });
+        });
+        setAdkMap(map);
+        setCurrentGa(deriveCurrentGa(versions));
+      })
+      .catch(console.error);
   }, []);
+
+  const partners = buildPartnerSummary(data, adkMap, currentGa, config.minDevices);
+  const legacyPartners = partners.filter((partner) => partner.legacyPct > config.legacyAlertPct);
+  const allVersions = [...new Set(partners.flatMap((partner) => Object.keys(partner.versions)))];
 
   const onParsed = (rows) => {
     setSaved(false);
     setData(rows);
-
-    // Group by partner → ADK version
-    const partnerMap = {};
-    rows.forEach(r => {
-      const partner = r['partner'] || r['Partner'] || 'Unknown';
-      const cv      = r['core_version'] || r['core version'] || '';
-      const adkVer  = adkMap[cv] || cv || 'Unknown';
-      const cnt     = parseInt(r['count_unique_device_id'] || r['unique_devices'] || 0);
-      if (!partnerMap[partner]) partnerMap[partner] = {};
-      partnerMap[partner][adkVer] = (partnerMap[partner][adkVer] || 0) + cnt;
-    });
-
-    // Build summary rows, filter to >= MIN_DEVICES
-    const summary = Object.entries(partnerMap)
-      .map(([partner, versions]) => {
-        const total = Object.values(versions).reduce((a, b) => a + b, 0);
-        if (total < MIN_DEVICES) return null;
-        const legacy = Object.entries(versions).filter(([v]) => v !== CURRENT_GA && v !== 'Unknown');
-        const legacyCount = legacy.reduce((a, [, c]) => a + c, 0);
-        return { partner, versions, total, legacyCount, legacyPct: total ? ((legacyCount / total) * 100).toFixed(1) : '0' };
-      })
-      .filter(Boolean)
-      .sort((a, b) => b.legacyPct - a.legacyPct);
-
-    setPartners(summary);
   };
 
-  const legacy = partners.filter(p => parseFloat(p.legacyPct) > 0);
-
   const generateNotes = () => {
-    if (!legacy.length) return 'All partners with 100+ devices are fully migrated to ' + CURRENT_GA + '.';
-    return legacy.map(p =>
-      `${p.partner}: ${p.legacyPct}% on legacy ADK (${p.legacyCount.toLocaleString()} of ${p.total.toLocaleString()} devices)`
-    ).join('\n');
+    if (!partners.length) return '';
+    if (!legacyPartners.length) return `All partners with ${config.minDevices}+ devices are fully migrated to ${currentGa}.`;
+    return legacyPartners
+      .map((partner) => `${partner.partner}: ${partner.legacyPct.toFixed(1)}% on legacy ADK (${partner.legacyCount.toLocaleString()} of ${partner.total.toLocaleString()} devices)`)
+      .join('\n');
   };
 
   const copy = () => {
@@ -72,15 +97,20 @@ export default function PartnerMigration() {
   };
 
   const save = async () => {
+    if (!partners.length) return;
     setSaving(true);
     try {
       await addDoc(collection(db, 'partnerMigration'), {
         weekOf: new Date().toISOString().slice(0, 10),
+        currentGa,
+        thresholds: config,
         partners,
         uploadedAt: serverTimestamp(),
       });
       setSaved(true);
-    } catch (e) { console.error(e); }
+    } catch (e) {
+      console.error(e);
+    }
     setSaving(false);
   };
 
@@ -97,7 +127,7 @@ export default function PartnerMigration() {
           <li>Open <a href="https://disney.my.sentry.io/organizations/disney/explore/discover/results/?field=partner&field=device&field=core_version&field=count_unique%28device_id%29&field=count%28%29&sort=-count_unique_device_id&statsPeriod=24h" target="_blank" rel="noreferrer">Sentry: ADK Partner–Device Combinations</a>.</li>
           <li>Ensure the time range is set to <strong>Last 24 hours</strong> and the view is <strong>tabular</strong>.</li>
           <li>Click <strong>Export</strong> to download the CSV.</li>
-          <li>Upload below. The app maps core_version → ADK label, filters to ≥{MIN_DEVICES} unique devices, and identifies partners still on legacy versions.</li>
+          <li>Upload below. The app maps <code>core_version</code> values using ADK Version Manager and flags any partner above the configured legacy threshold.</li>
         </ol>
         <div style={{ marginTop: 12, display: 'flex', gap: 10, flexWrap: 'wrap' }}>
           <a className="source-link" href="https://disney.my.sentry.io/organizations/disney/explore/discover/results/?field=partner&field=device&field=core_version&field=count_unique%28device_id%29&field=count%28%29&sort=-count_unique_device_id&statsPeriod=24h" target="_blank" rel="noreferrer">🔗 Open Sentry Dashboard</a>
@@ -105,8 +135,27 @@ export default function PartnerMigration() {
         </div>
       </div>
 
+      <div className="card">
+        <div className="card-title">Analysis Settings</div>
+        <div className="card-subtitle">The current GA is derived from the ADK version marked current in Firestore. Adjust the thresholds if the weekly notes should be stricter.</div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 16 }}>
+          <div className="form-group" style={{ marginBottom: 0 }}>
+            <label className="form-label">Current GA</label>
+            <input className="form-input" value={currentGa} readOnly />
+          </div>
+          <div className="form-group" style={{ marginBottom: 0 }}>
+            <label className="form-label">Minimum devices</label>
+            <input className="form-input" type="number" min="1" value={config.minDevices} onChange={(e) => setConfig((prev) => ({ ...prev, minDevices: Number(e.target.value) || 0 }))} />
+          </div>
+          <div className="form-group" style={{ marginBottom: 0 }}>
+            <label className="form-label">Legacy alert threshold %</label>
+            <input className="form-input" type="number" min="0" step="0.1" value={config.legacyAlertPct} onChange={(e) => setConfig((prev) => ({ ...prev, legacyAlertPct: Number(e.target.value) || 0 }))} />
+          </div>
+        </div>
+      </div>
+
       <div className="alert alert-info">
-        ℹ️ Current GA version: <strong>{CURRENT_GA}</strong>. Partners with any devices on older versions are flagged. Filter threshold: ≥{MIN_DEVICES} unique devices.
+        ℹ️ Current GA: <strong>{currentGa}</strong>. Partners are included once they reach {config.minDevices}+ unique devices and are flagged when legacy share exceeds {config.legacyAlertPct}%.
       </div>
 
       <div className="card">
@@ -125,23 +174,23 @@ export default function PartnerMigration() {
             <div className="kpi-box">
               <div className="kpi-label">Total Partners</div>
               <div className="kpi-value">{partners.length}</div>
-              <div className="text-muted">≥{MIN_DEVICES} unique devices</div>
+              <div className="text-muted">{config.minDevices}+ unique devices</div>
             </div>
             <div className="kpi-box">
-              <div className="kpi-label">Not Fully Migrated</div>
-              <div className="kpi-value" style={{ color: legacy.length ? '#dc2626' : '#059669' }}>{legacy.length}</div>
-              <div className="text-muted">partners with legacy ADK</div>
+              <div className="kpi-label">Above Legacy Threshold</div>
+              <div className="kpi-value" style={{ color: legacyPartners.length ? '#dc2626' : '#059669' }}>{legacyPartners.length}</div>
+              <div className="text-muted">{config.legacyAlertPct}%+ on legacy ADK</div>
             </div>
             <div className="kpi-box">
-              <div className="kpi-label">Fully on {CURRENT_GA}</div>
-              <div className="kpi-value" style={{ color: '#059669' }}>{partners.length - legacy.length}</div>
+              <div className="kpi-label">Fully on {currentGa}</div>
+              <div className="kpi-value" style={{ color: '#059669' }}>{partners.length - legacyPartners.length}</div>
               <div className="text-muted">partners fully migrated</div>
             </div>
           </div>
 
-          {legacy.length > 0 && (
+          {legacyPartners.length > 0 && (
             <div className="alert alert-warning">
-              ⚠️ <strong>{legacy.length} partner{legacy.length > 1 ? 's' : ''}</strong> still have devices on legacy ADK versions. See details below.
+              ⚠️ <strong>{legacyPartners.length} partner{legacyPartners.length > 1 ? 's' : ''}</strong> still exceed the configured legacy threshold.
             </div>
           )}
 
@@ -153,26 +202,21 @@ export default function PartnerMigration() {
                   <tr>
                     <th>Partner</th>
                     <th>Total Devices</th>
-                    {[...new Set(partners.flatMap(p => Object.keys(p.versions)))].map(v => <th key={v}>{v}</th>)}
+                    {allVersions.map((version) => <th key={version}>{version}</th>)}
                     <th>Legacy %</th>
                     <th>Status</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {partners.map((p, i) => {
-                    const allVersions = [...new Set(partners.flatMap(x => Object.keys(x.versions)))];
-                    const isLegacy = parseFloat(p.legacyPct) > 0;
+                  {partners.map((partner) => {
+                    const isLegacy = partner.legacyPct > config.legacyAlertPct;
                     return (
-                      <tr key={i}>
-                        <td style={{ fontWeight: 600 }}>{p.partner}</td>
-                        <td className="num">{p.total.toLocaleString()}</td>
-                        {allVersions.map(v => <td key={v} className="num">{(p.versions[v] || 0).toLocaleString()}</td>)}
-                        <td className={isLegacy ? 'neg' : 'pos'}>{p.legacyPct}%</td>
-                        <td>
-                          {isLegacy
-                            ? <span className="chip chip-red">Legacy</span>
-                            : <span className="chip chip-green">Migrated</span>}
-                        </td>
+                      <tr key={partner.partner}>
+                        <td style={{ fontWeight: 600 }}>{partner.partner}</td>
+                        <td className="num">{partner.total.toLocaleString()}</td>
+                        {allVersions.map((version) => <td key={version} className="num">{(partner.versions[version] || 0).toLocaleString()}</td>)}
+                        <td className={isLegacy ? 'neg' : 'pos'}>{partner.legacyPct.toFixed(1)}%</td>
+                        <td>{isLegacy ? <span className="chip chip-red">Legacy</span> : <span className="chip chip-green">Migrated</span>}</td>
                       </tr>
                     );
                   })}
