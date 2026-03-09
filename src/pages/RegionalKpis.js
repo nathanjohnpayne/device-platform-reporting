@@ -108,7 +108,11 @@ TOTAL: MAU ${compactNumber(currentTotals.mau, 2)} (${formatChange(totalChanges.m
       await addDoc(collection(db, 'monthlySnapshots'), {
         type: 'regionalKpis',
         month: summaryRows[0]?.month || new Date().toISOString().slice(0, 7),
-        uploads,
+        rowCounts: REGIONS.reduce((counts, region) => {
+          counts[region] = uploads[region]?.length || 0;
+          return counts;
+        }, {}),
+        seriesByRegion: rowsByRegion,
         summaryRows,
         uploadedAt: serverTimestamp(),
       });

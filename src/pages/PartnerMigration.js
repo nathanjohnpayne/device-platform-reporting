@@ -30,7 +30,7 @@ function buildPartnerSummary(rows, adkMap, currentGa, minDevices) {
     .map(([partner, versions]) => {
       const total = Object.values(versions).reduce((sum, value) => sum + value, 0);
       if (total < minDevices) return null;
-      const legacyEntries = Object.entries(versions).filter(([version]) => version !== currentGa && version !== 'Unknown');
+      const legacyEntries = Object.entries(versions).filter(([version]) => version !== currentGa);
       const legacyCount = legacyEntries.reduce((sum, [, value]) => sum + value, 0);
       const legacyPct = total ? (legacyCount / total) * 100 : 0;
       return {
@@ -128,6 +128,7 @@ export default function PartnerMigration() {
           <li>Ensure the time range is set to <strong>Last 24 hours</strong> and the view is <strong>tabular</strong>.</li>
           <li>Click <strong>Export</strong> to download the CSV.</li>
           <li>Upload below. The app maps <code>core_version</code> values using ADK Version Manager and flags any partner above the configured legacy threshold.</li>
+          <li>Any unmapped <code>core_version</code> values are treated as legacy until the ADK version table is updated.</li>
         </ol>
         <div style={{ marginTop: 12, display: 'flex', gap: 10, flexWrap: 'wrap' }}>
           <a className="source-link" href="https://disney.my.sentry.io/organizations/disney/explore/discover/results/?field=partner&field=device&field=core_version&field=count_unique%28device_id%29&field=count%28%29&sort=-count_unique_device_id&statsPeriod=24h" target="_blank" rel="noreferrer">🔗 Open Sentry Dashboard</a>
@@ -155,7 +156,7 @@ export default function PartnerMigration() {
       </div>
 
       <div className="alert alert-info">
-        ℹ️ Current GA: <strong>{currentGa}</strong>. Partners are included once they reach {config.minDevices}+ unique devices and are flagged when legacy share exceeds {config.legacyAlertPct}%.
+        ℹ️ Current GA: <strong>{currentGa}</strong>. Partners are included once they reach {config.minDevices}+ unique devices and are flagged when legacy share exceeds {config.legacyAlertPct}%. Unmapped versions count as legacy.
       </div>
 
       <div className="card">

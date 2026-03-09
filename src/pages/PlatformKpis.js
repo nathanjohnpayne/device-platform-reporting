@@ -4,7 +4,7 @@ import { addDoc, collection, serverTimestamp } from 'firebase/firestore';
 import UploadZone from '../components/UploadZone';
 import { db } from '../firebase';
 import { buildMonthlyDataset, buildSummaryRows, buildTrendData, parseLookerMetricRows, parseLookerZip } from '../utils/looker';
-import { compactNumber, formatChange, getChangeClass } from '../utils/reporting';
+import { compactNumber, formatChange, getChangeClass, parseNumber } from '../utils/reporting';
 
 const PLATFORM_ORDER = ['PlayStation', 'Xbox', 'ADK'];
 const COLORS = { PlayStation: '#3b82f6', Xbox: '#10b981', ADK: '#f59e0b' };
@@ -12,11 +12,12 @@ const CHART_METRICS = [
   { key: 'mau', label: 'MAU', formatter: (value) => compactNumber(value, 1) },
   { key: 'mad', label: 'MAD', formatter: (value) => compactNumber(value, 1) },
   { key: 'hrs', label: 'Playback Hrs', formatter: (value) => compactNumber(value, 1) },
-  { key: 'hpv', label: 'HPV', formatter: (value) => value == null ? '—' : value.toFixed(2) },
+  { key: 'hpv', label: 'HPV', formatter: (value) => formatHpv(value) },
 ];
 
-function metricName(metric) {
-  return CHART_METRICS.find((item) => item.key === metric)?.label || metric;
+function formatHpv(value) {
+  const numeric = parseNumber(value);
+  return numeric == null ? '—' : numeric.toFixed(2);
 }
 
 export default function PlatformKpis() {
@@ -66,7 +67,7 @@ export default function PlatformKpis() {
     if (!summaryRows.length) return '';
     const currentMonth = summaryRows[0]?.month || '';
     const rows = summaryRows.map((row) => (
-      `${row.entity}: MAU ${compactNumber(row.current.mau, 2)} (${formatChange(row.mauMoM)}) | MAD ${compactNumber(row.current.mad, 2)} (${formatChange(row.madMoM)}) | Playback Hrs ${compactNumber(row.current.hrs, 2)} (${formatChange(row.hrsMoM)}) | HPV ${row.current.hpv?.toFixed(2) || '—'} (${formatChange(row.hpvMoM)})`
+      `${row.entity}: MAU ${compactNumber(row.current.mau, 2)} (${formatChange(row.mauMoM)}) | MAD ${compactNumber(row.current.mad, 2)} (${formatChange(row.madMoM)}) | Playback Hrs ${compactNumber(row.current.hrs, 2)} (${formatChange(row.hrsMoM)}) | HPV ${formatHpv(row.current.hpv)} (${formatChange(row.hpvMoM)})`
     )).join('\n');
     return `<h3>Business KPIs / Program KPIs (D+) — ${currentMonth}</h3>\n${rows}`;
   };
@@ -78,7 +79,12 @@ export default function PlatformKpis() {
       await addDoc(collection(db, 'monthlySnapshots'), {
         type: 'platformKpis',
         month: summaryRows[0]?.month || new Date().toISOString().slice(0, 7),
-        uploads,
+        rowCounts: {
+          mau: uploads.mau?.length || 0,
+          mad: uploads.mad?.length || 0,
+          hrs: uploads.hrs?.length || 0,
+        },
+        seriesByPlatform,
         summaryRows,
         uploadedAt: serverTimestamp(),
       });
@@ -209,7 +215,7 @@ export default function PlatformKpis() {
                     <td className={getChangeClass(row.madMoM)}>{formatChange(row.madMoM)}</td>
                     <td className="num">{row.current.hrs?.toLocaleString() || '—'}</td>
                     <td className={getChangeClass(row.hrsMoM)}>{formatChange(row.hrsMoM)}</td>
-                    <td className="num">{row.current.hpv?.toFixed(2) || '—'}</td>
+                    <td className="num">{formatHpv(row.current.hpv)}</td>
                     <td className={getChangeClass(row.hpvMoM)}>{formatChange(row.hpvMoM)}</td>
                   </tr>
                 ))}

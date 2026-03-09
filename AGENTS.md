@@ -33,7 +33,7 @@ The codebase is intentionally simple. Keep changes aligned with the existing cli
 
 - Firebase initialization lives in [`src/firebase.js`](/Users/nathanpayne/GitHub/device-platform-reporting/src/firebase.js).
 - The app expects `REACT_APP_FIREBASE_*` variables for at least `API_KEY`, `APP_ID`, and `MEASUREMENT_ID`.
-- The README mentions `.env.example` / `.env.local`, but `.env.example` is not present in the repo as of March 9, 2026.
+- Use [`.env.example`](/Users/nathanpayne/GitHub/device-platform-reporting/.env.example) as the starting point for local Firebase config.
 - Allowed login domains are enforced in both client code and Firebase rules:
   - `disney.com`
   - `disneystreaming.com`
@@ -99,49 +99,47 @@ Current collection usage in code:
   - Typical fields: `weekOf`, `partners`, `uploadedAt`.
 - `monthlySnapshots`
   - Mixed collection for monthly flows.
-  - `platformKpis` docs store `mauData`, `madData`, `hrsData`.
-  - `regionalKpis` docs store `regions`.
+  - `platformKpis` docs store computed `seriesByPlatform`, `summaryRows`, and row counts.
+  - `regionalKpis` docs store computed `seriesByRegion`, `summaryRows`, and row counts.
 
 ## Important Workflow Details
 
 ### Playback Performance
 
-- Accepts a Conviva CSV and auto-detects numeric keys from the first row.
-- Chart rendering is generic; it does not use a strict schema beyond "numeric columns".
-- Firestore saves raw parsed `rows`.
+- Accepts a Conviva CSV and classifies series into Attempts, Unique Devices, VSF-T, and VPF-T from the column names.
+- Narrative generation is threshold-driven and configurable in the page UI.
+- Firestore saves raw parsed rows plus the generated narrative/threshold snapshot.
 
 ### ADK Version Share
 
 - Loads ADK mappings from `adkVersions` on mount.
 - Maps `core_version` values to the configured ADK label.
-- Saves computed share rows, not raw upload rows.
-- Historical trend reads from Firestore and plots the last 12 entries.
+- Saves computed share rows and trend data, not raw upload rows.
+- Historical trend reads a bounded set of saved entries and prefers numeric `pctValue` data when present.
 
 ### Partner Migration
 
-- Uses `MIN_DEVICES = 100`.
-- Uses a hardcoded current GA constant:
-  - `CURRENT_GA = 'ADK 3.1.1'`
-- The comment in code says this should be updated when ADK 4.0 GA ships on March 23, 2026.
-- Any change to the current GA should be reflected in both the constant and likely the seeded version notes.
+- Current GA is derived from the `adkVersions` entry marked current/GA, with release date as fallback.
+- Minimum-device and legacy alert thresholds are configurable in the page UI.
+- Unmapped `core_version` values are intentionally treated as legacy until the reference table is updated.
 
 ### Platform KPIs
 
-- UI asks for three Looker CSVs: active accounts, active devices, playback hours.
-- Current implementation groups KPI rows only from the `mau` upload inside `process(...)`; `mad` and `hrs` uploads are saved to Firestore but not merged into the rendered `kpis` object.
-- Treat this page carefully. If you touch it, verify whether the current behavior is intentional or a bug before refactoring.
+- Supports either a Looker ZIP upload or three manual CSV uploads.
+- MAU, MAD, Playback Hours, and HPV are merged into a single per-platform monthly series with MoM output.
+- Firestore stores computed monthly series, not the raw Looker uploads.
 
 ### Regional KPIs
 
 - Tracks four fixed regions: `DOMESTIC`, `EMEA`, `LATAM`, `APAC`.
-- Each uploaded CSV is reduced to totals for that region.
-- The page currently generates totals and a pie chart, but not the richer month-over-month output described in the spec.
+- Each uploaded CSV is normalized into a monthly per-region series.
+- The page renders region totals, MoM deltas, and the regional MAU share pie chart.
 
 ### ADK Version Manager
 
 - Seed data is defined inline as `SEED_VERSIONS`.
 - The manager is operationally important because both ADK Version Share and Partner Migration depend on it for `core_version` mapping.
-- There is no duplicate detection during seed or add operations. Be careful not to create repeated mappings accidentally.
+- Add/edit flow warns on duplicate `core_version` mappings and previews how the entry will be interpreted by downstream workflows.
 
 ## Known Gaps Between Spec And Code
 

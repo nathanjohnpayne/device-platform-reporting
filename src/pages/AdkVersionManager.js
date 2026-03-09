@@ -31,12 +31,12 @@ function parseCoreVersions(value = '') {
 
 export default function AdkVersionManager() {
   const [versions, setVersions] = useState([]);
-  const [loading, setLoading]   = useState(true);
-  const [modal, setModal]       = useState(null);   // null | 'add' | 'edit'
-  const [form, setForm]         = useState(EMPTY);
-  const [editId, setEditId]     = useState(null);
-  const [saving, setSaving]     = useState(false);
-  const [seeding, setSeeding]   = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [modal, setModal] = useState(null);   // null | 'add' | 'edit'
+  const [form, setForm] = useState(EMPTY);
+  const [editId, setEditId] = useState(null);
+  const [saving, setSaving] = useState(false);
+  const [seeding, setSeeding] = useState(false);
   const [deleteConfirm, setDeleteConfirm] = useState(null);
 
   const parsedCoreVersions = parseCoreVersions(form.coreVersions);
@@ -51,14 +51,22 @@ export default function AdkVersionManager() {
     setLoading(true);
     try {
       const snap = await getDocs(query(collection(db, 'adkVersions'), orderBy('releaseDate', 'desc')));
-      setVersions(snap.docs.map(d => ({ id: d.id, ...d.data() })));
-    } catch (e) { console.error(e); }
+      setVersions(snap.docs.map((docSnap) => ({ id: docSnap.id, ...docSnap.data() })));
+    } catch (e) {
+      console.error(e);
+    }
     setLoading(false);
   };
 
-  useEffect(() => { load(); }, []);
+  useEffect(() => {
+    load();
+  }, []);
 
-  const openAdd  = () => { setForm(EMPTY); setEditId(null); setModal('add'); };
+  const openAdd = () => {
+    setForm(EMPTY);
+    setEditId(null);
+    setModal('add');
+  };
   const openEdit = (v) => {
     setForm({ adkVersion: v.adkVersion, coreVersions: (v.coreVersions || []).join(', '), releaseDate: v.releaseDate, features: v.features || '', notes: v.notes || '' });
     setEditId(v.id);
@@ -69,12 +77,12 @@ export default function AdkVersionManager() {
     if (!form.adkVersion.trim() || !form.coreVersions.trim()) return;
     setSaving(true);
     const payload = {
-      adkVersion:   form.adkVersion.trim(),
+      adkVersion: form.adkVersion.trim(),
       coreVersions: parsedCoreVersions,
-      releaseDate:  form.releaseDate,
-      features:     form.features.trim(),
-      notes:        form.notes.trim(),
-      updatedAt:    serverTimestamp(),
+      releaseDate: form.releaseDate,
+      features: form.features.trim(),
+      notes: form.notes.trim(),
+      updatedAt: serverTimestamp(),
     };
     try {
       if (modal === 'add') {
@@ -90,7 +98,12 @@ export default function AdkVersionManager() {
 
   const confirmDelete = async () => {
     if (!deleteConfirm) return;
-    try { await deleteDoc(doc(db, 'adkVersions', deleteConfirm)); await load(); } catch (e) { console.error(e); }
+    try {
+      await deleteDoc(doc(db, 'adkVersions', deleteConfirm));
+      await load();
+    } catch (e) {
+      console.error(e);
+    }
     setDeleteConfirm(null);
   };
 
@@ -100,7 +113,7 @@ export default function AdkVersionManager() {
       for (const v of SEED_VERSIONS) {
         await addDoc(collection(db, 'adkVersions'), {
           ...v,
-          coreVersions: v.coreVersions.split(',').map(s => s.trim()),
+          coreVersions: v.coreVersions.split(',').map((item) => item.trim()),
           createdAt: serverTimestamp(),
           updatedAt: serverTimestamp(),
         });
@@ -168,11 +181,11 @@ export default function AdkVersionManager() {
               </tr>
             </thead>
             <tbody>
-              {versions.map((v, i) => (
+              {versions.map((v) => (
                 <tr key={v.id}>
                   <td style={{ fontWeight: 700, whiteSpace: 'nowrap' }}>{v.adkVersion}</td>
                   <td>
-                    {(v.coreVersions || []).map(cv => (
+                    {(v.coreVersions || []).map((cv) => (
                       <span key={cv} className="tag" style={{ marginRight: 4, marginBottom: 2, display: 'inline-block' }}>{cv}</span>
                     ))}
                   </td>
@@ -196,34 +209,34 @@ export default function AdkVersionManager() {
 
       {/* Add / Edit Modal */}
       {modal && (
-        <div className="modal-overlay" onClick={e => e.target === e.currentTarget && setModal(null)}>
+        <div className="modal-overlay" onClick={(e) => e.target === e.currentTarget && setModal(null)}>
           <div className="modal">
             <div className="modal-title">{modal === 'add' ? '+ Add ADK Version' : '✏️ Edit ADK Version'}</div>
 
             <div className="form-group">
               <label className="form-label">ADK Version Label *</label>
-              <input className="form-input" placeholder="e.g. ADK 4.0" value={form.adkVersion} onChange={e => setForm(f => ({ ...f, adkVersion: e.target.value }))} />
+              <input className="form-input" placeholder="e.g. ADK 4.0" value={form.adkVersion} onChange={(e) => setForm((f) => ({ ...f, adkVersion: e.target.value }))} />
             </div>
 
             <div className="form-group">
               <label className="form-label">core_version strings (comma-separated) *</label>
-              <input className="form-input" placeholder="e.g. 2025.09.10, 2025.09.8" value={form.coreVersions} onChange={e => setForm(f => ({ ...f, coreVersions: e.target.value }))} />
+              <input className="form-input" placeholder="e.g. 2025.09.10, 2025.09.8" value={form.coreVersions} onChange={(e) => setForm((f) => ({ ...f, coreVersions: e.target.value }))} />
               <p className="text-muted" style={{ marginTop: 4 }}>These are the exact strings that appear in the Sentry <code>core_version</code> column. Multiple values for the same ADK release are fine.</p>
             </div>
 
             <div className="form-group">
               <label className="form-label">Release Date</label>
-              <input className="form-input" type="date" value={form.releaseDate} onChange={e => setForm(f => ({ ...f, releaseDate: e.target.value }))} />
+              <input className="form-input" type="date" value={form.releaseDate} onChange={(e) => setForm((f) => ({ ...f, releaseDate: e.target.value }))} />
             </div>
 
             <div className="form-group">
               <label className="form-label">Features</label>
-              <textarea className="form-input form-textarea" placeholder="Key features or changes in this release" value={form.features} onChange={e => setForm(f => ({ ...f, features: e.target.value }))} />
+              <textarea className="form-input form-textarea" placeholder="Key features or changes in this release" value={form.features} onChange={(e) => setForm((f) => ({ ...f, features: e.target.value }))} />
             </div>
 
             <div className="form-group">
               <label className="form-label">Notes (e.g., "Current GA")</label>
-              <input className="form-input" placeholder="e.g. Current GA, Deprecated, Beta only" value={form.notes} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} />
+              <input className="form-input" placeholder="e.g. Current GA, Deprecated, Beta only" value={form.notes} onChange={(e) => setForm((f) => ({ ...f, notes: e.target.value }))} />
             </div>
 
             {duplicateMappings.length > 0 && (
@@ -260,7 +273,7 @@ export default function AdkVersionManager() {
 
       {/* Delete confirmation */}
       {deleteConfirm && (
-        <div className="modal-overlay" onClick={e => e.target === e.currentTarget && setDeleteConfirm(null)}>
+        <div className="modal-overlay" onClick={(e) => e.target === e.currentTarget && setDeleteConfirm(null)}>
           <div className="modal" style={{ maxWidth: 400 }}>
             <div className="modal-title">⚠️ Delete Version?</div>
             <p style={{ fontSize: 14, color: '#475569', marginBottom: 20 }}>

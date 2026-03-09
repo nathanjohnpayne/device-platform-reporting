@@ -114,7 +114,7 @@ export function buildMonthlyDataset(metricRowsByType, dimensionOrder = []) {
       .sort((a, b) => compareDateValues(a.month, b.month))
       .map((row) => ({
         ...row,
-        hpv: row.mau ? row.hrs / row.mau : null,
+        hpv: row.mau != null && row.hrs != null ? row.hrs / row.mau : null,
       }));
     seriesByEntity[entity] = rows;
   });

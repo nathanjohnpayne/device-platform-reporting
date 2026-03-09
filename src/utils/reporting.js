@@ -96,6 +96,8 @@ export function normalizeDateValue(value) {
     const year = parsed.getUTCFullYear();
     const month = parsed.getUTCMonth() + 1;
     const day = parsed.getUTCDate();
+    // Treat inputs like "January 2025" as month-only labels so monthly charts
+    // stay grouped by month instead of being normalized to an arbitrary day.
     if (/\b\d{4}\b/.test(raw) && !/\b\d{1,2}\b.*\b\d{1,2}\b/.test(raw) && /[A-Za-z]/.test(raw) && !/[/-]\d{1,2}[/-]\d{1,2}/.test(raw)) {
       return `${year}-${pad(month)}`;
     }

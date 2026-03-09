@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { CartesianGrid, Cell, Legend, Line, LineChart, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
-import { addDoc, collection, getDocs, orderBy, query, serverTimestamp } from 'firebase/firestore';
+import { addDoc, collection, getDocs, limit, orderBy, query, serverTimestamp } from 'firebase/firestore';
 import UploadZone from '../components/UploadZone';
 import { db } from '../firebase';
 import {
@@ -53,8 +53,13 @@ function buildVersionShare(rows, adkMap) {
   const pieData = uploadLabels
     .map((name) => {
       const value = latest[name] || 0;
-      const pct = safePercent(value, latest.total);
-      return { name, value, pct: pct == null ? '0%' : formatPercent(pct, 1) };
+      const pctValue = safePercent(value, latest.total);
+      return {
+        name,
+        value,
+        pctValue: pctValue == null ? 0 : pctValue,
+        pct: pctValue == null ? '0%' : formatPercent(pctValue, 1),
+      };
     })
     .filter((row) => row.value > 0)
     .sort((left, right) => right.value - left.value);
@@ -84,7 +89,7 @@ export default function AdkVersionShare() {
       })
       .catch(console.error);
 
-    getDocs(query(collection(db, 'adkVersionShare'), orderBy('weekOf', 'desc')))
+    getDocs(query(collection(db, 'adkVersionShare'), orderBy('weekOf', 'desc'), limit(52)))
       .then((snap) => {
         setHistory(snap.docs.map((docSnap) => ({ id: docSnap.id, ...docSnap.data() })).reverse());
       })
@@ -245,7 +250,10 @@ export default function AdkVersionShare() {
                     <Line
                       key={label}
                       type="monotone"
-                      dataKey={(entry) => Number((entry.shares?.find((share) => share.name === label)?.pct || '0').replace('%', ''))}
+                      dataKey={(entry) => {
+                        const share = entry.shares?.find((item) => item.name === label);
+                        return share?.pctValue ?? Number((share?.pct || '0').replace('%', ''));
+                      }}
                       name={label}
                       stroke={COLORS[index % COLORS.length]}
                       strokeWidth={2}

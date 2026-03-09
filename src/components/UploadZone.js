@@ -1,6 +1,7 @@
 // components/UploadZone.js
 import React, { useRef, useState } from 'react';
 import Papa from 'papaparse';
+import { normalizeFieldName } from '../utils/reporting';
 
 export default function UploadZone({ label, hint, expectedColumns, onParsed, onFileSelected, accept = '.csv' }) {
   const inputRef = useRef();
@@ -31,7 +32,8 @@ export default function UploadZone({ label, hint, expectedColumns, onParsed, onF
       complete: ({ data, meta }) => {
         // Validate expected columns if provided
         if (expectedColumns) {
-          const missing = expectedColumns.filter(c => !meta.fields?.includes(c));
+          const actualFields = new Set((meta.fields || []).map((field) => normalizeFieldName(field)));
+          const missing = expectedColumns.filter((column) => !actualFields.has(normalizeFieldName(column)));
           if (missing.length) {
             setStatus('error');
             setMessage(`Missing columns: ${missing.join(', ')}`);
