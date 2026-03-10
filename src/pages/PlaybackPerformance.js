@@ -3,6 +3,7 @@ import { CartesianGrid, Legend, Line, LineChart, ResponsiveContainer, Tooltip, X
 import { addDoc, collection, serverTimestamp } from 'firebase/firestore';
 import UploadZone from '../components/UploadZone';
 import { db } from '../firebase';
+import { parseConvivaPlaybackRows } from '../utils/conviva';
 import {
   classifyMetric,
   compactNumber,
@@ -163,6 +164,25 @@ export default function PlaybackPerformance() {
     setSaved(false);
   };
 
+  const handleConvivaUpload = async (file) => {
+    const text = await file.text();
+    const rows = parseConvivaPlaybackRows(text);
+    const seriesCount = [...new Set(
+      rows.flatMap((row) => Object.keys(row).filter((key) => key !== 'Timestamp' && classifyMetric(key)))
+    )].length;
+
+    if (!seriesCount) {
+      throw new Error('This Conviva export did not contain readable Playback Performance sections. Upload the dashboard CSV export, not the app-version detail table.');
+    }
+
+    onParsed(rows);
+
+    return {
+      status: 'ok',
+      message: `${rows.length.toLocaleString()} time points loaded across ${seriesCount} playback series`,
+    };
+  };
+
   const saveToFirestore = async () => {
     if (!data || !recognizedMetricCount) return;
     setSaving(true);
@@ -238,7 +258,7 @@ ${sections}`;
         <UploadZone
           label="Drop Conviva Playback Performance CSV here"
           hint="Export from Conviva → NCP+ADK: Playback Performance Comparisons → last 30 days"
-          onParsed={onParsed}
+          onFileSelected={handleConvivaUpload}
         />
       </div>
 
