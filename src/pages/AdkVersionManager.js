@@ -140,7 +140,7 @@ export default function AdkVersionManager() {
         </ul>
         <div style={{ marginTop: 10, display: 'flex', gap: 10, flexWrap: 'wrap' }}>
           <a className="source-link" href="https://confluence.disney.com" target="_blank" rel="noreferrer">🔗 ADK Versions (Confluence)</a>
-          <a className="source-link" href="https://disney.my.sentry.io/organizations/disney/explore/discover/results/?field=partner&field=device&field=core_version&field=count_unique%28device_id%29&field=count%28%29&sort=-count_unique_device_id&statsPeriod=24h" target="_blank" rel="noreferrer">🔗 Sentry: ADK Partner–Device Combos</a>
+          <a className="source-link" href="https://disney.my.sentry.io/organizations/disney/explore/discover/results/?field=partner&field=device&field=core_version&field=count_unique%28device_id%29&field=count%28%29&name=ADK%20Partner%20-%20Device%20Combinations&project=23&query=%21partner%3Arefapp%20%21partner%3Abroadcom%20%21partner%3Avpe%20title%3Alaunch%20%21partner%3Adss%20%21partner%3Atwdc_microsoft%20%21partner%3Atwdc_amazon&sort=-count_unique_device_id&statsPeriod=24h&yAxis=count_unique%28device_id%29&yAxis=count%28%29" target="_blank" rel="noreferrer">🔗 Sentry: ADK Partner–Device Combos</a>
         </div>
       </div>
 

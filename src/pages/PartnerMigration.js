@@ -124,14 +124,14 @@ export default function PartnerMigration() {
       <div className="instructions">
         <h4>ℹ️ How to get this data</h4>
         <ol>
-          <li>Open <a href="https://disney.my.sentry.io/organizations/disney/explore/discover/results/?field=partner&field=device&field=core_version&field=count_unique%28device_id%29&field=count%28%29&sort=-count_unique_device_id&statsPeriod=24h" target="_blank" rel="noreferrer">Sentry: ADK Partner–Device Combinations</a>.</li>
+          <li>Open <a href="https://disney.my.sentry.io/organizations/disney/explore/discover/results/?field=partner&field=device&field=core_version&field=count_unique%28device_id%29&field=count%28%29&name=ADK%20Partner%20-%20Device%20Combinations&project=23&query=%21partner%3Arefapp%20%21partner%3Abroadcom%20%21partner%3Avpe%20title%3Alaunch%20%21partner%3Adss%20%21partner%3Atwdc_microsoft%20%21partner%3Atwdc_amazon&sort=-count_unique_device_id&statsPeriod=24h&yAxis=count_unique%28device_id%29&yAxis=count%28%29" target="_blank" rel="noreferrer">Sentry: ADK Partner–Device Combinations</a>.</li>
           <li>Ensure the time range is set to <strong>Last 24 hours</strong> and the view is <strong>tabular</strong>.</li>
           <li>Click <strong>Export</strong> to download the CSV.</li>
           <li>Upload below. The app maps <code>core_version</code> values using ADK Version Manager and flags any partner above the configured legacy threshold.</li>
           <li>Any unmapped <code>core_version</code> values are treated as legacy until the ADK version table is updated.</li>
         </ol>
         <div style={{ marginTop: 12, display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-          <a className="source-link" href="https://disney.my.sentry.io/organizations/disney/explore/discover/results/?field=partner&field=device&field=core_version&field=count_unique%28device_id%29&field=count%28%29&sort=-count_unique_device_id&statsPeriod=24h" target="_blank" rel="noreferrer">🔗 Open Sentry Dashboard</a>
+          <a className="source-link" href="https://disney.my.sentry.io/organizations/disney/explore/discover/results/?field=partner&field=device&field=core_version&field=count_unique%28device_id%29&field=count%28%29&name=ADK%20Partner%20-%20Device%20Combinations&project=23&query=%21partner%3Arefapp%20%21partner%3Abroadcom%20%21partner%3Avpe%20title%3Alaunch%20%21partner%3Adss%20%21partner%3Atwdc_microsoft%20%21partner%3Atwdc_amazon&sort=-count_unique_device_id&statsPeriod=24h&yAxis=count_unique%28device_id%29&yAxis=count%28%29" target="_blank" rel="noreferrer">🔗 Open Sentry Dashboard</a>
           <a className="source-link" href="/adk-versions">⚙️ Manage ADK Versions</a>
         </div>
       </div>
