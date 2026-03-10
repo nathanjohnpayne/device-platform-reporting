@@ -103,6 +103,8 @@ function buildCreatorFields() {
 }
 
 function hydrateBatch(batchId, batchData = {}) {
+  // Keep older field aliases readable so pre-standardization docs still hydrate
+  // while newer batches consistently use uploadedAt.
   const importedAtMs = timestampToMs(batchData.uploadedAt || batchData.importedAt || batchData.importedAtMs);
 
   return {
