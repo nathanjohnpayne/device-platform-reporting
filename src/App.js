@@ -1,6 +1,6 @@
 // App.js
 import React from 'react';
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { AuthProvider, useAuth } from './hooks/useAuth';
 import Sidebar from './components/Sidebar';
 import SiteLogo from './components/SiteLogo';
@@ -38,7 +38,7 @@ const TITLES = {
 
 function AppShell() {
   const { user, loading } = useAuth();
-  const path = window.location.pathname;
+  const { pathname } = useLocation();
 
   if (loading) {
     return (
@@ -53,7 +53,8 @@ function AppShell() {
 
   if (!user) return <Login />;
 
-  const title = TITLES[path] || 'NCP+ADK KPIs';
+  const normalizedPath = pathname === '/' ? pathname : pathname.replace(/\/+$/, '');
+  const title = TITLES[normalizedPath] || 'NCP+ADK KPIs';
 
   return (
     <div className="app-shell">

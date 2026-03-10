@@ -3,6 +3,7 @@ import { CartesianGrid, Cell, Legend, Line, LineChart, Pie, PieChart, Responsive
 import { addDoc, collection, getDocs, limit, orderBy, query, serverTimestamp } from 'firebase/firestore';
 import UploadZone from '../components/UploadZone';
 import { db } from '../firebase';
+import { buildAdkVersionMap, resolveAdkVersionLabel } from '../utils/adk';
 import {
   compactNumber,
   compareDateValues,
@@ -29,7 +30,7 @@ function buildVersionShare(rows, adkMap) {
     const rawDate = dateKey ? row[dateKey] : '';
     const normalizedDate = normalizeDateValue(rawDate) || `snapshot-${String(index + 1).padStart(2, '0')}`;
     const coreVersion = getFieldValue(row, ['core_version', 'core version', 'ADK Version', 'adk_version']);
-    const label = adkMap[coreVersion] || coreVersion || 'Unknown';
+    const label = resolveAdkVersionLabel(coreVersion, adkMap);
     const count = parseNumber(getFieldValue(row, ['count_unique_device_id', 'Unique Devices', 'unique_devices', 'devices', 'Unique Devices With Attempts']));
 
     if (count == null) return;
@@ -78,14 +79,7 @@ export default function AdkVersionShare() {
   useEffect(() => {
     getDocs(collection(db, 'adkVersions'))
       .then((snap) => {
-        const map = {};
-        snap.forEach((docSnap) => {
-          const version = docSnap.data();
-          (version.coreVersions || [version.coreVersion]).forEach((coreVersion) => {
-            if (coreVersion) map[coreVersion] = version.adkVersion;
-          });
-        });
-        setAdkMap(map);
+        setAdkMap(buildAdkVersionMap(snap.docs.map((docSnap) => docSnap.data())));
       })
       .catch(console.error);
 
