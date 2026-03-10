@@ -152,6 +152,39 @@ export function buildMonthlyDataset(metricRowsByType, dimensionOrder = []) {
   return seriesByEntity;
 }
 
+export function mergeMonthlySeries(...seriesCollections) {
+  const merged = {};
+
+  seriesCollections.forEach((seriesByEntity) => {
+    Object.entries(seriesByEntity || {}).forEach(([entity, rows]) => {
+      if (!merged[entity]) merged[entity] = {};
+
+      (rows || []).forEach((row) => {
+        const month = normalizeDateValue(row?.month);
+        if (!month) return;
+
+        merged[entity][month] = {
+          ...(merged[entity][month] || {}),
+          ...row,
+          month,
+        };
+      });
+    });
+  });
+
+  return Object.fromEntries(
+    Object.entries(merged).map(([entity, rowsByMonth]) => [
+      entity,
+      Object.values(rowsByMonth)
+        .sort((left, right) => compareDateValues(left.month, right.month))
+        .map((row) => ({
+          ...row,
+          hpv: row.mau != null && row.hrs != null ? row.hrs / row.mau : row.hpv ?? null,
+        })),
+    ])
+  );
+}
+
 export function buildSummaryRows(seriesByEntity) {
   return Object.entries(seriesByEntity).map(([entity, rows]) => {
     const current = rows[rows.length - 1] || {};
