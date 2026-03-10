@@ -5,14 +5,15 @@ import {
   getDoc,
   getDocs,
   query,
+  serverTimestamp,
   where,
   writeBatch,
 } from 'firebase/firestore';
 import RollbackButton from '../components/RollbackButton';
 import UploadZone from '../components/UploadZone';
-import { db } from '../firebase';
+import { auth, db } from '../firebase';
 import { buildAdkVersionMap } from '../utils/adk';
-import { buildImportBatchId, canRollback, formatImportTimestamp, ROLLBACK_WINDOW_MS } from '../utils/importHistory';
+import { buildImportBatchId, canRollback, formatImportTimestamp, getRollbackUntilMs } from '../utils/importHistory';
 import {
   buildImportSummary,
   buildLegacyWorkbook,
@@ -119,6 +120,11 @@ export default function LegacyWorkbookSync() {
       const importRef = doc(db, 'legacyWorkbookImports', workbookType);
       const currentImportSnap = await getDoc(importRef);
       const currentImport = currentImportSnap.exists() ? currentImportSnap.data() : null;
+      const currentUser = auth.currentUser;
+
+      if (!currentUser) {
+        throw new Error('You must be signed in to import a workbook.');
+      }
 
       if (currentImport?.batchId === batchId) {
         return {
@@ -128,9 +134,10 @@ export default function LegacyWorkbookSync() {
       }
 
       const workbookLabel = workbookLabelForType(workbookType);
-      const importedAtMs = Date.now();
-      const rollbackUntilMs = importedAtMs + ROLLBACK_WINDOW_MS;
-      const importedAt = new Date(importedAtMs);
+      const creatorFields = {
+        createdByUid: currentUser.uid,
+        createdByEmail: currentUser.email || '',
+      };
       const batch = writeBatch(db);
 
       sheetPayloads.forEach((sheet) => {
@@ -144,8 +151,8 @@ export default function LegacyWorkbookSync() {
           csvText: sheet.csvText,
           rowCount: sheet.rowCount,
           columnCount: sheet.columnCount,
-          importedAt,
-          importedAtMs,
+          importedAt: serverTimestamp(),
+          ...creatorFields,
         });
       });
 
@@ -156,11 +163,10 @@ export default function LegacyWorkbookSync() {
         sourceFileName: file.name,
         sheetCount: workbook.sheets.length,
         sheetNames: workbook.sheetNames,
-        importedAt,
-        importedAtMs,
-        rollbackUntilMs,
+        importedAt: serverTimestamp(),
         previousBatchId: currentImport?.batchId || null,
         previousImport: currentImport || null,
+        ...creatorFields,
       };
 
       batch.set(doc(db, 'legacyWorkbookImportBatches', batchId), manifest);
@@ -169,7 +175,7 @@ export default function LegacyWorkbookSync() {
       await batch.commit();
       await refreshStatus();
 
-      setStatus(`${buildImportSummary(workbookType, workbook.sheets)} Rollback available until ${formatImportTimestamp(rollbackUntilMs)}.`);
+      setStatus(`${buildImportSummary(workbookType, workbook.sheets)} Rollback is available for 30 days.`);
 
       return {
         status: 'ok',
@@ -197,8 +203,13 @@ export default function LegacyWorkbookSync() {
       }
 
       const currentImport = currentImportSnap.data();
+      const rollbackUntilMs = getRollbackUntilMs(getImportedAtMs(currentImport));
 
-      if (!canRollback(currentImport.rollbackUntilMs)) {
+      if (!currentImport.createdByUid) {
+        throw new Error('Rollback is only available for workbook imports created after this feature was added.');
+      }
+
+      if (!canRollback(rollbackUntilMs)) {
         throw new Error('Only workbook imports from the last 30 days can be rolled back.');
       }
 
@@ -304,7 +315,8 @@ export default function LegacyWorkbookSync() {
       label: 'Drop Program KPI workbook here',
       filename: imports[LEGACY_WORKBOOK_TYPES.program]?.sourceFileName,
       importedAtMs: getImportedAtMs(imports[LEGACY_WORKBOOK_TYPES.program]),
-      rollbackUntilMs: imports[LEGACY_WORKBOOK_TYPES.program]?.rollbackUntilMs,
+      rollbackUntilMs: getRollbackUntilMs(getImportedAtMs(imports[LEGACY_WORKBOOK_TYPES.program])),
+      rollbackEnabled: Boolean(imports[LEGACY_WORKBOOK_TYPES.program]?.createdByUid),
     },
     {
       key: LEGACY_WORKBOOK_TYPES.burnDown,
@@ -313,7 +325,8 @@ export default function LegacyWorkbookSync() {
       label: 'Drop Burn Down workbook here',
       filename: imports[LEGACY_WORKBOOK_TYPES.burnDown]?.sourceFileName,
       importedAtMs: getImportedAtMs(imports[LEGACY_WORKBOOK_TYPES.burnDown]),
-      rollbackUntilMs: imports[LEGACY_WORKBOOK_TYPES.burnDown]?.rollbackUntilMs,
+      rollbackUntilMs: getRollbackUntilMs(getImportedAtMs(imports[LEGACY_WORKBOOK_TYPES.burnDown])),
+      rollbackEnabled: Boolean(imports[LEGACY_WORKBOOK_TYPES.burnDown]?.createdByUid),
     },
   ]), [imports]);
 
@@ -382,7 +395,7 @@ export default function LegacyWorkbookSync() {
                 <>
                   <div><strong>Imported file:</strong> {card.filename}</div>
                   <div><strong>Imported at:</strong> {formatImportTimestamp(card.importedAtMs)}</div>
-                  {card.rollbackUntilMs ? (
+                  {card.rollbackEnabled && card.rollbackUntilMs ? (
                     <div style={{ marginTop: 10, display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
                       <RollbackButton
                         subject={`${card.title.toLowerCase()} baseline`}

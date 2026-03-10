@@ -70,6 +70,27 @@ function buildVersionShare(rows, adkMap) {
   return { latestLabel, pieData, trendData, uploadLabels };
 }
 
+function validateVersionShareRows(rows) {
+  if (!rows?.length) {
+    throw new Error('The upload is empty.');
+  }
+
+  const dateKey = guessDateKey(rows[0]);
+  if (!dateKey) {
+    throw new Error('Unable to find a date column in this ADK Version Share export.');
+  }
+
+  const hasVersion = rows.some((row) => String(getFieldValue(row, ['core_version', 'core version', 'ADK Version', 'adk_version']) || '').trim());
+  if (!hasVersion) {
+    throw new Error('The upload is missing a readable core_version or ADK version column.');
+  }
+
+  const hasDeviceCounts = rows.some((row) => parseNumber(getFieldValue(row, ['count_unique_device_id', 'Unique Devices', 'unique_devices', 'devices', 'Unique Devices With Attempts'])) != null);
+  if (!hasDeviceCounts) {
+    throw new Error('The upload is missing readable unique-device counts.');
+  }
+}
+
 export default function AdkVersionShare() {
   const [data, setData] = useState(null);
   const [adkMap, setAdkMap] = useState({});
@@ -133,6 +154,7 @@ export default function AdkVersionShare() {
   });
 
   const onParsed = (rows, sourceFileName = '') => {
+    validateVersionShareRows(rows);
     setData(rows);
     setSourceFiles(sourceFileName ? [sourceFileName] : []);
     setImportGeneration((current) => current + 1);

@@ -2,7 +2,6 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // ── Helper: only @disney.com and @disneystreaming.com users ──────────────
     function isAllowedUser() {
       return request.auth != null
         && (
@@ -11,9 +10,77 @@ service cloud.firestore {
         );
     }
 
-    // ── All collections: authenticated Disney users only ─────────────────────
-    match /{collection}/{document=**} {
+    function requestOwnsDocument() {
+      return isAllowedUser()
+        && request.resource.data.createdByUid == request.auth.uid;
+    }
+
+    function resourceOwnedByCaller() {
+      return isAllowedUser()
+        && resource.data.createdByUid == request.auth.uid;
+    }
+
+    function createUsesServerTimestamp(fieldName) {
+      return fieldName == request.time;
+    }
+
+    function withinRollbackWindow(fieldName) {
+      return fieldName is timestamp
+        && request.time < fieldName + duration.value(30, 'd');
+    }
+
+    match /adkVersions/{document} {
       allow read, write: if isAllowedUser();
+    }
+
+    match /weeklySnapshots/{document} {
+      allow read: if isAllowedUser();
+      allow create: if requestOwnsDocument() && createUsesServerTimestamp(request.resource.data.uploadedAt);
+      allow delete: if resourceOwnedByCaller() && withinRollbackWindow(resource.data.uploadedAt);
+    }
+
+    match /adkVersionShare/{document} {
+      allow read: if isAllowedUser();
+      allow create: if requestOwnsDocument() && createUsesServerTimestamp(request.resource.data.uploadedAt);
+      allow delete: if resourceOwnedByCaller() && withinRollbackWindow(resource.data.uploadedAt);
+    }
+
+    match /partnerMigration/{document} {
+      allow read: if isAllowedUser();
+      allow create: if requestOwnsDocument() && createUsesServerTimestamp(request.resource.data.uploadedAt);
+      allow delete: if resourceOwnedByCaller() && withinRollbackWindow(resource.data.uploadedAt);
+    }
+
+    match /monthlySnapshots/{document} {
+      allow read: if isAllowedUser();
+      allow create: if requestOwnsDocument() && createUsesServerTimestamp(request.resource.data.uploadedAt);
+      allow delete: if resourceOwnedByCaller() && withinRollbackWindow(resource.data.uploadedAt);
+    }
+
+    match /importBatches/{document} {
+      allow read: if isAllowedUser();
+      allow create: if requestOwnsDocument() && createUsesServerTimestamp(request.resource.data.importedAt);
+      allow delete: if resourceOwnedByCaller() && withinRollbackWindow(resource.data.importedAt);
+    }
+
+    match /legacyWorkbookImportBatches/{document} {
+      allow read: if isAllowedUser();
+      allow create: if requestOwnsDocument() && createUsesServerTimestamp(request.resource.data.importedAt);
+    }
+
+    match /legacyWorkbookSheets/{document} {
+      allow read: if isAllowedUser();
+      allow create: if requestOwnsDocument() && createUsesServerTimestamp(request.resource.data.importedAt);
+    }
+
+    match /legacyWorkbookImports/{document} {
+      allow read: if isAllowedUser();
+      allow create: if requestOwnsDocument() && createUsesServerTimestamp(request.resource.data.importedAt);
+      allow update: if isAllowedUser() && (
+        (requestOwnsDocument() && createUsesServerTimestamp(request.resource.data.importedAt))
+        || (resourceOwnedByCaller() && withinRollbackWindow(resource.data.importedAt))
+      );
+      allow delete: if resourceOwnedByCaller() && withinRollbackWindow(resource.data.importedAt);
     }
   }
 }

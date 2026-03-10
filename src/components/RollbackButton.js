@@ -25,7 +25,7 @@ export default function RollbackButton({
       setOpen(false);
       onRolledBack?.();
     } catch (nextError) {
-      setError(nextError.message || 'Unable to roll back this import.');
+      setError(nextError.message || 'Rollback failed. Check your permissions and network connection, then try again.');
     } finally {
       setBusy(false);
     }

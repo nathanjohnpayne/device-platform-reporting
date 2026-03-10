@@ -13,19 +13,25 @@ export default function useAutoImport(request, requestKey, callbacks = {}) {
   const requestRef = useRef(request);
   const callbacksRef = useRef(callbacks);
   const [state, setState] = useState(IDLE_STATE);
+  const stateRef = useRef(IDLE_STATE);
+
+  const setTrackedState = (nextState) => {
+    stateRef.current = typeof nextState === 'function' ? nextState(stateRef.current) : nextState;
+    setState(stateRef.current);
+  };
 
   requestRef.current = request;
   callbacksRef.current = callbacks;
 
   useEffect(() => {
     if (!requestKey || !requestRef.current) {
-      setState(IDLE_STATE);
+      setTrackedState(IDLE_STATE);
       return;
     }
 
     let cancelled = false;
 
-    setState({
+    setTrackedState({
       ...IDLE_STATE,
       status: 'saving',
     });
@@ -43,7 +49,7 @@ export default function useAutoImport(request, requestKey, callbacks = {}) {
           rollbackUntilMs: result.batch.rollbackUntilMs,
         };
 
-        setState(nextState);
+        setTrackedState(nextState);
 
         if (result.status === 'duplicate') {
           callbacksRef.current.onDuplicate?.(result);
@@ -54,7 +60,7 @@ export default function useAutoImport(request, requestKey, callbacks = {}) {
       } catch (error) {
         if (cancelled) return;
 
-        setState({
+        setTrackedState({
           ...IDLE_STATE,
           status: 'error',
           error: error.message || 'Automatic save failed.',
@@ -70,22 +76,24 @@ export default function useAutoImport(request, requestKey, callbacks = {}) {
   }, [requestKey]);
 
   const rollback = async () => {
-    if (!state.batchId) {
+    const currentState = stateRef.current;
+
+    if (!currentState.batchId || currentState.status === 'rollingBack') {
       return null;
     }
 
-    const previousState = state;
+    const previousState = currentState;
 
-    setState((current) => ({
+    setTrackedState((current) => ({
       ...current,
       status: 'rollingBack',
       error: '',
     }));
 
     try {
-      const result = await rollbackImportSnapshot(state.batchId);
+      const result = await rollbackImportSnapshot(currentState.batchId);
 
-      setState({
+      setTrackedState({
         ...IDLE_STATE,
         status: 'rolledBack',
       });
@@ -93,7 +101,7 @@ export default function useAutoImport(request, requestKey, callbacks = {}) {
       callbacksRef.current.onRolledBack?.(result);
       return result;
     } catch (error) {
-      setState({
+      setTrackedState({
         ...previousState,
         error: error.message || 'Unable to roll back this import.',
       });

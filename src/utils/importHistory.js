@@ -1,6 +1,7 @@
-import { collection, doc, getDoc, serverTimestamp, writeBatch } from 'firebase/firestore';
-import { db } from '../firebase';
+import { collection, doc, getDoc, getDocFromServer, serverTimestamp, writeBatch } from 'firebase/firestore';
+import { auth, db } from '../firebase';
 
+// Shared policy: recent imports stay user-reversible for 30 days.
 export const ROLLBACK_WINDOW_DAYS = 30;
 export const ROLLBACK_WINDOW_MS = ROLLBACK_WINDOW_DAYS * 24 * 60 * 60 * 1000;
 
@@ -57,6 +58,7 @@ async function digestText(input) {
 }
 
 export async function buildImportBatchId(type, payload) {
+  // Duplicate detection is content-based so the same dataset is blocked even if it is re-exported under a new filename.
   const normalized = JSON.stringify({
     type,
     payload: normalizeForHash(payload),
@@ -65,13 +67,50 @@ export async function buildImportBatchId(type, payload) {
   return `${type}-${await digestText(normalized)}`;
 }
 
+export function timestampToMs(value) {
+  if (!value) return null;
+  if (typeof value === 'number' && Number.isFinite(value)) return value;
+  if (value?.toDate) return value.toDate().getTime();
+  if (value instanceof Date) return value.getTime();
+  return null;
+}
+
+export function getRollbackUntilMs(importedAtValue) {
+  const importedAtMs = timestampToMs(importedAtValue);
+  return importedAtMs ? importedAtMs + ROLLBACK_WINDOW_MS : null;
+}
+
 export function canRollback(rollbackUntilMs) {
   return Number.isFinite(rollbackUntilMs) && Date.now() <= rollbackUntilMs;
 }
 
 export function formatImportTimestamp(timestampMs) {
   if (!timestampMs) return 'Unknown time';
-  return new Date(timestampMs).toLocaleString();
+  return new Date(timestampMs).toISOString().replace(/\.\d{3}Z$/, ' UTC').replace('T', ' ');
+}
+
+function buildCreatorFields() {
+  const currentUser = auth.currentUser;
+
+  if (!currentUser) {
+    throw new Error('You must be signed in to save or roll back imports.');
+  }
+
+  return {
+    createdByUid: currentUser.uid,
+    createdByEmail: currentUser.email || '',
+  };
+}
+
+function hydrateBatch(batchId, batchData = {}) {
+  const importedAtMs = timestampToMs(batchData.importedAt || batchData.uploadedAt || batchData.importedAtMs);
+
+  return {
+    id: batchId,
+    ...batchData,
+    importedAtMs,
+    rollbackUntilMs: getRollbackUntilMs(importedAtMs),
+  };
 }
 
 export async function saveImportSnapshot({
@@ -92,23 +131,19 @@ export async function saveImportSnapshot({
     return {
       status: 'duplicate',
       batchId,
-      batch: {
-        id: existingBatch.id,
-        ...existingBatch.data(),
-      },
+      batch: hydrateBatch(existingBatch.id, existingBatch.data()),
     };
   }
 
-  const importedAtMs = Date.now();
-  const rollbackUntilMs = importedAtMs + ROLLBACK_WINDOW_MS;
+  const creatorFields = buildCreatorFields();
   const snapshotRef = doc(collection(db, collectionName), batchId);
   const snapshotData = {
     ...data,
     importBatchId: batchId,
     importLabel: label,
-    importedAtMs,
-    rollbackUntilMs,
+    importFingerprint: batchId,
     sourceFiles: normalizedSourceFiles,
+    ...creatorFields,
     uploadedAt: serverTimestamp(),
   };
 
@@ -120,37 +155,40 @@ export async function saveImportSnapshot({
     label,
     collectionName,
     snapshotId: snapshotRef.id,
+    importFingerprint: batchId,
     importedAt: serverTimestamp(),
-    importedAtMs,
-    rollbackUntilMs,
     sourceFiles: normalizedSourceFiles,
     summary,
+    ...creatorFields,
   });
 
   await batch.commit();
 
+  let savedBatchSnap = null;
+
+  try {
+    savedBatchSnap = await getDocFromServer(batchRef);
+  } catch (error) {
+    savedBatchSnap = await getDoc(batchRef);
+  }
+
+  const hydratedBatch = hydrateBatch(savedBatchSnap.id, savedBatchSnap.data());
+
   return {
     status: 'saved',
     batchId,
-    batch: {
-      id: batchId,
-      type,
-      label,
-      collectionName,
-      snapshotId: snapshotRef.id,
-      importedAtMs,
-      rollbackUntilMs,
-      sourceFiles: normalizedSourceFiles,
-      summary,
-    },
+    batch: hydratedBatch,
     snapshot: {
       id: snapshotRef.id,
       ...data,
       importBatchId: batchId,
       importLabel: label,
-      importedAtMs,
-      rollbackUntilMs,
+      importFingerprint: batchId,
       sourceFiles: normalizedSourceFiles,
+      ...creatorFields,
+      uploadedAt: savedBatchSnap.data()?.importedAt || null,
+      importedAtMs: hydratedBatch.importedAtMs,
+      rollbackUntilMs: hydratedBatch.rollbackUntilMs,
     },
   };
 }
@@ -163,7 +201,7 @@ export async function rollbackImportSnapshot(batchId) {
     throw new Error('This import is no longer available to roll back.');
   }
 
-  const batchData = batchSnap.data();
+  const batchData = hydrateBatch(batchSnap.id, batchSnap.data());
 
   if (!canRollback(batchData.rollbackUntilMs)) {
     throw new Error(`Only imports from the last ${ROLLBACK_WINDOW_DAYS} days can be rolled back.`);
