@@ -59,7 +59,9 @@ export default function AutoSaveStatus({
         <strong>{label}:</strong> {renderMessage(status, importedAtMs, rollbackUntilMs, error)}
         {(status === 'saved' || status === 'duplicate') && !showRollback && rollbackUntilMs && (
           <div style={{ fontSize: 12, marginTop: 4 }}>
-            Rollback expired after the shared {ROLLBACK_WINDOW_DAYS}-day window.
+            {status === 'duplicate'
+              ? `The original import from ${formatImportTimestamp(importedAtMs)} is no longer reversible.`
+              : `Rollback expired after the shared ${ROLLBACK_WINDOW_DAYS}-day window.`}
           </div>
         )}
       </div>

@@ -145,11 +145,11 @@ Use **Legacy Workbook Sync** in the sidebar when you need to keep the historical
 1. Import the current copies of:
    - `NCP+ADK Program Weekly KPIs.xlsx`
    - `ADK Adoption Burn Down 2025.xlsx`
-2. Continue saving data through the normal app workflows.
+2. Continue importing data through the normal app workflows. Weekly and monthly imports save automatically.
 3. Export merged replacement workbooks whenever you need to refresh the legacy Google Sheets.
 
 Notes:
-- Imported workbook sheets are stored in Firestore as the historical baseline.
+- Imported workbook sheets are stored in Firestore as the historical baseline. New workbook imports are versioned so the latest baseline can be rolled back to the previous import within 30 days.
 - Import only trusted internal workbook exports. The app reads each spreadsheet locally in the browser and stores sheet contents in Firestore as the export baseline.
 - New **Partner Migration** saves now retain the raw Sentry rows needed to recreate Discover tabs in the burn-down workbook.
 - New **Platform KPIs** saves now retain the partner-level workbook row data needed to rebuild the legacy monthly tabs.
@@ -165,7 +165,9 @@ weeklySnapshots/      — Playback Performance uploads + generated narrative sna
 adkVersionShare/      — Weekly ADK version share history and saved trend data
 partnerMigration/     — Weekly partner migration snapshots + thresholds used
 monthlySnapshots/     — Computed platform/regional monthly series, summary rows, row counts
+importBatches/        — Auto-save batch metadata used for duplicate detection and rollback
 legacyWorkbookImports/ — Workbook import manifests (latest imported source file + sheet list)
+legacyWorkbookImportBatches/ — Versioned legacy workbook import metadata used for rollback
 legacyWorkbookSheets/  — Sheet-level historical workbook baseline used for export
 ```
 
@@ -187,6 +189,7 @@ Notes:
 
 - Firestore and Storage rules restrict all access to authenticated @disney.com and @disneystreaming.com users.
 - Domain enforcement happens both in the Firebase Auth layer (client-side) and in Firestore security rules (server-side).
+- Auto-saved workflow imports and rollback metadata are creator-owned for delete/rollback paths. The 30-day rollback window is enforced from Firestore server timestamps.
 - No data is publicly readable.
 
 ---

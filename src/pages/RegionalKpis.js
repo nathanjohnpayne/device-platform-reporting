@@ -39,6 +39,16 @@ function buildRegionSummary(rowsByRegion) {
   });
 }
 
+function validateRegionalUpload(rows, region) {
+  if (!rows?.length) {
+    throw new Error(`${region} upload is empty.`);
+  }
+
+  if (!parseRegionRows(rows, region).length) {
+    throw new Error(`Unable to find valid monthly ${region} rows in this Looker export.`);
+  }
+}
+
 export default function RegionalKpis() {
   const [uploads, setUploads] = useState({});
   const [copied, setCopied] = useState(false);
@@ -108,6 +118,7 @@ export default function RegionalKpis() {
   const autoSave = useAutoImport(autoSaveRequest, autoSaveRequest ? `regional-kpis-${importGeneration}` : null);
 
   const setRegionUpload = (region) => (rows, fields, sourceFileName) => {
+    validateRegionalUpload(rows, region);
     setUploads((prev) => ({ ...prev, [region]: rows }));
     setUploadSources((prev) => ({ ...prev, [region]: sourceFileName || prev[region] }));
     setImportGeneration((current) => current + 1);

@@ -3,11 +3,43 @@ import React, { useState, useEffect } from 'react';
 import { collection, getDocs, query, orderBy, limit } from 'firebase/firestore';
 import RollbackButton from '../components/RollbackButton';
 import { db } from '../firebase';
-import { canRollback, formatImportTimestamp, rollbackImportSnapshot } from '../utils/importHistory';
+import { canRollback, formatImportTimestamp, getRollbackUntilMs, rollbackImportSnapshot, timestampToMs } from '../utils/importHistory';
+
+function renderRollbackAction(row, setRows, rollingBackId, setRollingBackId, subject) {
+  const rollbackUntilMs = row.rollbackUntilMs || getRollbackUntilMs(timestampToMs(row.uploadedAt));
+
+  if (!row.importBatchId) {
+    return <span className="text-muted">Legacy save</span>;
+  }
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 6, opacity: rollingBackId && rollingBackId !== row.id ? 0.65 : 1 }}>
+      <RollbackButton
+        subject={subject}
+        rollbackUntilMs={rollbackUntilMs}
+        disabled={Boolean(rollingBackId)}
+        onConfirm={async () => {
+          setRollingBackId(row.id);
+
+          try {
+            await rollbackImportSnapshot(row.importBatchId);
+            setRows((prev) => prev.filter((entry) => entry.id !== row.id));
+          } finally {
+            setRollingBackId('');
+          }
+        }}
+      />
+      <span className="text-muted">
+        {canRollback(rollbackUntilMs) ? `Until ${formatImportTimestamp(rollbackUntilMs)}` : '30-day window expired'}
+      </span>
+    </div>
+  );
+}
 
 function HistoryTable({ title, collectionName, columns }) {
   const [rows, setRows]       = useState([]);
   const [loading, setLoading] = useState(true);
+  const [rollingBackId, setRollingBackId] = useState('');
 
   useEffect(() => {
     getDocs(query(collection(db, collectionName), orderBy('uploadedAt', 'desc'), limit(50)))
@@ -38,7 +70,7 @@ function HistoryTable({ title, collectionName, columns }) {
                 <tr key={r.id}>
                   {columns.map(c => (
                     <td key={c.key}>
-                      {c.render ? c.render(r, setRows) : (r[c.key] ?? '—')}
+                      {c.render ? c.render(r, setRows, rollingBackId, setRollingBackId) : (r[c.key] ?? '—')}
                     </td>
                   ))}
                 </tr>
@@ -73,19 +105,7 @@ export default function History() {
           {
             key: 'actions',
             label: 'Actions',
-            render: (row, setRows) => row.importBatchId ? (
-              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 6 }}>
-                <RollbackButton
-                  subject="the playback snapshot"
-                  rollbackUntilMs={row.rollbackUntilMs}
-                  onConfirm={() => rollbackImportSnapshot(row.importBatchId)}
-                  onRolledBack={() => setRows((prev) => prev.filter((entry) => entry.id !== row.id))}
-                />
-                <span className="text-muted">
-                  {canRollback(row.rollbackUntilMs) ? `Until ${formatImportTimestamp(row.rollbackUntilMs)}` : '30-day window expired'}
-                </span>
-              </div>
-            ) : <span className="text-muted">Legacy save</span>,
+            render: (row, setRows, rollingBackId, setRollingBackId) => renderRollbackAction(row, setRows, rollingBackId, setRollingBackId, 'the playback snapshot'),
           },
         ]}
       />
@@ -100,19 +120,7 @@ export default function History() {
           {
             key: 'actions',
             label: 'Actions',
-            render: (row, setRows) => row.importBatchId ? (
-              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 6 }}>
-                <RollbackButton
-                  subject="the ADK version share import"
-                  rollbackUntilMs={row.rollbackUntilMs}
-                  onConfirm={() => rollbackImportSnapshot(row.importBatchId)}
-                  onRolledBack={() => setRows((prev) => prev.filter((entry) => entry.id !== row.id))}
-                />
-                <span className="text-muted">
-                  {canRollback(row.rollbackUntilMs) ? `Until ${formatImportTimestamp(row.rollbackUntilMs)}` : '30-day window expired'}
-                </span>
-              </div>
-            ) : <span className="text-muted">Legacy save</span>,
+            render: (row, setRows, rollingBackId, setRollingBackId) => renderRollbackAction(row, setRows, rollingBackId, setRollingBackId, 'the ADK version share import'),
           },
         ]}
       />
@@ -128,19 +136,7 @@ export default function History() {
           {
             key: 'actions',
             label: 'Actions',
-            render: (row, setRows) => row.importBatchId ? (
-              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 6 }}>
-                <RollbackButton
-                  subject="the partner migration import"
-                  rollbackUntilMs={row.rollbackUntilMs}
-                  onConfirm={() => rollbackImportSnapshot(row.importBatchId)}
-                  onRolledBack={() => setRows((prev) => prev.filter((entry) => entry.id !== row.id))}
-                />
-                <span className="text-muted">
-                  {canRollback(row.rollbackUntilMs) ? `Until ${formatImportTimestamp(row.rollbackUntilMs)}` : '30-day window expired'}
-                </span>
-              </div>
-            ) : <span className="text-muted">Legacy save</span>,
+            render: (row, setRows, rollingBackId, setRollingBackId) => renderRollbackAction(row, setRows, rollingBackId, setRollingBackId, 'the partner migration import'),
           },
         ]}
       />
@@ -155,19 +151,13 @@ export default function History() {
           {
             key: 'actions',
             label: 'Actions',
-            render: (row, setRows) => row.importBatchId ? (
-              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 6 }}>
-                <RollbackButton
-                  subject={`the ${row.type === 'platformKpis' ? 'platform KPI' : 'regional KPI'} import`}
-                  rollbackUntilMs={row.rollbackUntilMs}
-                  onConfirm={() => rollbackImportSnapshot(row.importBatchId)}
-                  onRolledBack={() => setRows((prev) => prev.filter((entry) => entry.id !== row.id))}
-                />
-                <span className="text-muted">
-                  {canRollback(row.rollbackUntilMs) ? `Until ${formatImportTimestamp(row.rollbackUntilMs)}` : '30-day window expired'}
-                </span>
-              </div>
-            ) : <span className="text-muted">Legacy save</span>,
+            render: (row, setRows, rollingBackId, setRollingBackId) => renderRollbackAction(
+              row,
+              setRows,
+              rollingBackId,
+              setRollingBackId,
+              `the ${row.type === 'platformKpis' ? 'platform KPI' : 'regional KPI'} import`
+            ),
           },
         ]}
       />

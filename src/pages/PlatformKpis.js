@@ -21,6 +21,16 @@ function formatHpv(value) {
   return numeric == null ? '—' : numeric.toFixed(2);
 }
 
+function validatePlatformUpload(rows, metricType) {
+  if (!rows?.length) {
+    throw new Error('The upload is empty.');
+  }
+
+  if (!parseLookerMetricRows(rows, metricType, 'platform').length) {
+    throw new Error('Unable to find valid monthly platform rows in this Looker export.');
+  }
+}
+
 export default function PlatformKpis() {
   const [uploads, setUploads] = useState({ mau: null, mad: null, hrs: null });
   const [chartMetric, setChartMetric] = useState('mau');
@@ -72,6 +82,7 @@ export default function PlatformKpis() {
   const autoSave = useAutoImport(autoSaveRequest, autoSaveRequest ? `platform-kpis-${importGeneration}` : null);
 
   const setMetricUpload = (metricType) => (rows, fields, sourceFileName) => {
+    validatePlatformUpload(rows, metricType);
     setUploads((prev) => ({ ...prev, [metricType]: rows }));
     setUploadSources((prev) => ({ ...prev, [metricType]: sourceFileName || prev[metricType] }));
     setImportGeneration((current) => current + 1);
@@ -82,7 +93,10 @@ export default function PlatformKpis() {
     const nextUploads = {};
 
     files.forEach((entry) => {
-      if (entry.metricType) nextUploads[entry.metricType] = entry.rows;
+      if (entry.metricType) {
+        validatePlatformUpload(entry.rows, entry.metricType);
+        nextUploads[entry.metricType] = entry.rows;
+      }
     });
 
     if (!nextUploads.mau || !nextUploads.mad || !nextUploads.hrs) {
