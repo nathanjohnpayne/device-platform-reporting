@@ -57,7 +57,7 @@ export default function History() {
       </div>
 
       <div className="alert alert-info">
-        ℹ️ All records saved via the weekly and monthly workflows appear here. Data is stored in Firestore and shared across all authenticated users.
+        ℹ️ All records saved via the weekly and monthly workflows appear here. Data is stored in Firestore and shared across all authenticated users. Legacy Google Sheets import/export now lives in <a href="/legacy-sync" style={{ fontWeight: 700 }}>Legacy Workbook Sync</a>.
       </div>
 
       <HistoryTable

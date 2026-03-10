@@ -3,6 +3,7 @@ import { CartesianGrid, Legend, Line, LineChart, ResponsiveContainer, Tooltip, X
 import { addDoc, collection, serverTimestamp } from 'firebase/firestore';
 import UploadZone from '../components/UploadZone';
 import { db } from '../firebase';
+import { buildLegacyPlatformSnapshot } from '../utils/legacyWorkbooks';
 import { buildMonthlyDataset, buildSummaryRows, buildTrendData, parseLookerMetricRows, parseLookerZip } from '../utils/looker';
 import { compactNumber, formatChange, getChangeClass, parseNumber } from '../utils/reporting';
 
@@ -36,6 +37,7 @@ export default function PlatformKpis() {
   const seriesByPlatform = buildMonthlyDataset(metricRows, PLATFORM_ORDER);
   const summaryRows = buildSummaryRows(seriesByPlatform).filter((row) => row.current.mau != null || row.current.mad != null || row.current.hrs != null);
   const trendData = buildTrendData(seriesByPlatform, chartMetric);
+  const legacyPlatformSnapshot = buildLegacyPlatformSnapshot(uploads);
   const ready = Boolean(uploads.mau && uploads.mad && uploads.hrs && summaryRows.length);
 
   const setMetricUpload = (metricType) => (rows) => {
@@ -86,6 +88,7 @@ export default function PlatformKpis() {
         },
         seriesByPlatform,
         summaryRows,
+        legacyWorkbook: legacyPlatformSnapshot ? { platform: legacyPlatformSnapshot } : null,
         uploadedAt: serverTimestamp(),
       });
       setSaved(true);
