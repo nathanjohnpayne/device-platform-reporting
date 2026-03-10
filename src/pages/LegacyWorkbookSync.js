@@ -17,6 +17,7 @@ import {
   LEGACY_WORKBOOK_TYPES,
   PROGRAM_WORKBOOK_SHEETS,
   downloadWorkbook,
+  isBurnDownWorkbookSheetSet,
   isProgramWorkbookSheetSet,
   readWorkbookFile,
   rowsToCsvText,
@@ -86,6 +87,9 @@ export default function LegacyWorkbookSync() {
       const workbook = await readWorkbookFile(file);
       if (workbookType === LEGACY_WORKBOOK_TYPES.program && !isProgramWorkbookSheetSet(workbook.sheetNames)) {
         throw new Error(`Program workbook must include these sheets: ${PROGRAM_WORKBOOK_SHEETS.join(', ')}`);
+      }
+      if (workbookType === LEGACY_WORKBOOK_TYPES.burnDown && !isBurnDownWorkbookSheetSet(workbook.sheets)) {
+        throw new Error('Burn down workbook must include at least one non-empty sheet.');
       }
 
       const existing = await getDocs(query(collection(db, 'legacyWorkbookSheets'), where('workbookType', '==', workbookType)));
@@ -218,6 +222,9 @@ export default function LegacyWorkbookSync() {
           <li>Keep using the normal weekly and monthly workflows. New saves are export-aware and can be merged back into the legacy spreadsheets.</li>
           <li>When another team needs the legacy file, export a merged workbook and replace the Google Sheet file manually.</li>
         </ol>
+        <div style={{ marginTop: 12, fontSize: 13, color: '#92400e' }}>
+          <strong>Import only trusted internal workbooks.</strong> The app reads the full spreadsheet in the browser and stores sheet contents in Firestore as the export baseline.
+        </div>
       </div>
 
       <div className="kpi-grid kpi-grid-4" style={{ marginBottom: 20 }}>
@@ -239,7 +246,11 @@ export default function LegacyWorkbookSync() {
         <div className="kpi-box">
           <div className="kpi-label">Imported Workbooks</div>
           <div className="kpi-value">{Object.keys(imports).length}</div>
-          <div className="text-muted">{loading ? 'Loading…' : 'program and burn down baselines'}</div>
+          <div className="text-muted">
+            {loading
+              ? 'Loading…'
+              : `Program ${imports[LEGACY_WORKBOOK_TYPES.program] ? '✓' : '—'} / Burn Down ${imports[LEGACY_WORKBOOK_TYPES.burnDown] ? '✓' : '—'}`}
+          </div>
         </div>
       </div>
 
