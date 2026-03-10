@@ -8,6 +8,9 @@
 
 /* ── Sidebar ──────────────────────────────────────────── */
 .sidebar-logo     { padding: 24px 20px 16px; border-bottom: 1px solid rgba(255,255,255,0.08); }
+.sidebar-brand    { display: flex; align-items: center; gap: 12px; }
+.sidebar-brand-mark { width: 46px; height: 46px; color: #93c5fd; flex: 0 0 auto; }
+.sidebar-brand-copy { min-width: 0; }
 .sidebar-logo h1  { font-size: 13px; font-weight: 700; color: #fff; letter-spacing: 0.04em; text-transform: uppercase; line-height: 1.4; }
 .sidebar-logo p   { font-size: 11px; color: rgba(255,255,255,0.45); margin-top: 4px; }
 
@@ -123,10 +126,13 @@
 .alert-warning    { background: #fffbeb; border: 1px solid #fde68a; color: #92400e; }
 .alert-error      { background: #fef2f2; border: 1px solid #fecaca; color: #991b1b; }
 
+/* ── Brand mark ───────────────────────────────────────── */
+.loading-logo     { width: 52px; height: 52px; color: #1e3a5f; display: block; margin: 0 auto 16px; }
+
 /* ── Login page ───────────────────────────────────────── */
 .login-page       { min-height: 100vh; display: flex; align-items: center; justify-content: center; background: linear-gradient(135deg, #0f2744 0%, #1e3a5f 50%, #1a5276 100%); }
 .login-card       { background: #fff; border-radius: 20px; padding: 48px 40px; width: 100%; max-width: 420px; box-shadow: 0 24px 80px rgba(0,0,0,0.3); text-align: center; }
-.login-logo       { font-size: 40px; margin-bottom: 16px; }
+.login-logo       { width: 64px; height: 64px; color: #101b92; display: block; margin: 0 auto 18px; }
 .login-card h1    { font-size: 22px; font-weight: 700; color: #0f2744; margin-bottom: 6px; }
 .login-card p     { font-size: 14px; color: #64748b; margin-bottom: 32px; line-height: 1.5; }
 .login-alert      { text-align: left; }

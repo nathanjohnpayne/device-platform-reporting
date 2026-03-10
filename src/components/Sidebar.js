@@ -1,7 +1,8 @@
 // components/Sidebar.js
 import React from 'react';
-import { NavLink, useNavigate } from 'react-router-dom';
+import { NavLink } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
+import SiteLogo from './SiteLogo';
 
 const weekly = [
   { to: '/playback-performance',   icon: '📊', label: 'Playback Performance' },
@@ -23,8 +24,13 @@ export default function Sidebar() {
   return (
     <nav className="sidebar">
       <div className="sidebar-logo">
-        <h1>NCP+ADK<br/>Program KPIs</h1>
-        <p>Disney Streaming</p>
+        <div className="sidebar-brand">
+          <SiteLogo className="sidebar-brand-mark" />
+          <div className="sidebar-brand-copy">
+            <h1>NCP+ADK<br/>Program KPIs</h1>
+            <p>Disney Streaming</p>
+          </div>
+        </div>
       </div>
 
       <div className="nav-group">
