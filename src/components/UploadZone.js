@@ -30,18 +30,18 @@ export default function UploadZone({ label, hint, expectedColumns, onParsed, onF
       header: true,
       skipEmptyLines: true,
       complete: ({ data, meta }) => {
-        try {
-          // Validate expected columns if provided
-          if (expectedColumns) {
-            const actualFields = new Set((meta.fields || []).map((field) => normalizeFieldName(field)));
-            const missing = expectedColumns.filter((column) => !actualFields.has(normalizeFieldName(column)));
-            if (missing.length) {
-              setStatus('error');
-              setMessage(`Missing columns: ${missing.join(', ')}`);
-              return;
-            }
+        // Validate expected columns if provided
+        if (expectedColumns) {
+          const actualFields = new Set((meta.fields || []).map((field) => normalizeFieldName(field)));
+          const missing = expectedColumns.filter((column) => !actualFields.has(normalizeFieldName(column)));
+          if (missing.length) {
+            setStatus('error');
+            setMessage(`Missing columns: ${missing.join(', ')}`);
+            return;
           }
+        }
 
+        try {
           onParsed(data, meta.fields, file.name);
           setStatus('ok');
           setMessage(`${data.length.toLocaleString()} rows loaded`);

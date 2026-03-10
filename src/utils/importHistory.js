@@ -1,4 +1,4 @@
-import { collection, doc, getDoc, getDocFromServer, serverTimestamp, writeBatch } from 'firebase/firestore';
+import { collection, doc, getDoc, getDocFromServer, runTransaction, serverTimestamp, writeBatch } from 'firebase/firestore';
 import { auth, db } from '../firebase';
 
 // Shared policy: recent imports stay user-reversible for 30 days.
@@ -75,9 +75,9 @@ export function timestampToMs(value) {
   return null;
 }
 
-export function getRollbackUntilMs(importedAtValue) {
-  const importedAtMs = timestampToMs(importedAtValue);
-  return importedAtMs ? importedAtMs + ROLLBACK_WINDOW_MS : null;
+export function getRollbackUntilMs(savedAtValue) {
+  const savedAtMs = timestampToMs(savedAtValue);
+  return savedAtMs ? savedAtMs + ROLLBACK_WINDOW_MS : null;
 }
 
 export function canRollback(rollbackUntilMs) {
@@ -103,7 +103,7 @@ function buildCreatorFields() {
 }
 
 function hydrateBatch(batchId, batchData = {}) {
-  const importedAtMs = timestampToMs(batchData.importedAt || batchData.uploadedAt || batchData.importedAtMs);
+  const importedAtMs = timestampToMs(batchData.uploadedAt || batchData.importedAt || batchData.importedAtMs);
 
   return {
     id: batchId,
@@ -156,7 +156,7 @@ export async function saveImportSnapshot({
     collectionName,
     snapshotId: snapshotRef.id,
     importFingerprint: batchId,
-    importedAt: serverTimestamp(),
+    uploadedAt: serverTimestamp(),
     sourceFiles: normalizedSourceFiles,
     summary,
     ...creatorFields,
@@ -186,7 +186,7 @@ export async function saveImportSnapshot({
       importFingerprint: batchId,
       sourceFiles: normalizedSourceFiles,
       ...creatorFields,
-      uploadedAt: savedBatchSnap.data()?.importedAt || null,
+      uploadedAt: savedBatchSnap.data()?.uploadedAt || null,
       importedAtMs: hydratedBatch.importedAtMs,
       rollbackUntilMs: hydratedBatch.rollbackUntilMs,
     },
@@ -195,25 +195,55 @@ export async function saveImportSnapshot({
 
 export async function rollbackImportSnapshot(batchId) {
   const batchRef = doc(db, 'importBatches', batchId);
-  const batchSnap = await getDoc(batchRef);
+  const rollbackMarkerRef = doc(db, 'importBatchRollbacks', batchId);
+  const creatorFields = buildCreatorFields();
 
-  if (!batchSnap.exists()) {
-    throw new Error('This import is no longer available to roll back.');
-  }
+  return runTransaction(db, async (transaction) => {
+    const batchSnap = await transaction.get(batchRef);
+    const rollbackMarkerSnap = await transaction.get(rollbackMarkerRef);
 
-  const batchData = hydrateBatch(batchSnap.id, batchSnap.data());
+    if (!batchSnap.exists()) {
+      if (rollbackMarkerSnap.exists()) {
+        return {
+          id: batchId,
+          status: 'alreadyRolledBack',
+          ...rollbackMarkerSnap.data(),
+        };
+      }
 
-  if (!canRollback(batchData.rollbackUntilMs)) {
-    throw new Error(`Only imports from the last ${ROLLBACK_WINDOW_DAYS} days can be rolled back.`);
-  }
+      throw new Error('This import is no longer available to roll back.');
+    }
 
-  const batch = writeBatch(db);
-  batch.delete(doc(db, batchData.collectionName, batchData.snapshotId || batchId));
-  batch.delete(batchRef);
-  await batch.commit();
+    if (rollbackMarkerSnap.exists()) {
+      return {
+        id: batchId,
+        status: 'alreadyRolledBack',
+        ...rollbackMarkerSnap.data(),
+      };
+    }
 
-  return {
-    id: batchId,
-    ...batchData,
-  };
+    const batchData = hydrateBatch(batchSnap.id, batchSnap.data());
+
+    if (!canRollback(batchData.rollbackUntilMs)) {
+      throw new Error(`Only imports from the last ${ROLLBACK_WINDOW_DAYS} days can be rolled back.`);
+    }
+
+    transaction.set(rollbackMarkerRef, {
+      batchId,
+      collectionName: batchData.collectionName,
+      snapshotId: batchData.snapshotId || batchId,
+      importFingerprint: batchData.importFingerprint || batchId,
+      uploadedAt: batchData.uploadedAt || null,
+      rolledBackAt: serverTimestamp(),
+      ...creatorFields,
+    });
+    transaction.delete(doc(db, batchData.collectionName, batchData.snapshotId || batchId));
+    transaction.delete(batchRef);
+
+    return {
+      id: batchId,
+      status: 'rolledBack',
+      ...batchData,
+    };
+  });
 }

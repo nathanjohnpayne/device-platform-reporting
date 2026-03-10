@@ -20,6 +20,16 @@ service cloud.firestore {
         && resource.data.createdByUid == request.auth.uid;
     }
 
+    function importBatchOwnedByCaller(batchId) {
+      return exists(/databases/$(database)/documents/importBatches/$(batchId))
+        && get(/databases/$(database)/documents/importBatches/$(batchId)).data.createdByUid == request.auth.uid;
+    }
+
+    function importBatchWithinRollbackWindow(batchId) {
+      return exists(/databases/$(database)/documents/importBatches/$(batchId))
+        && withinRollbackWindow(get(/databases/$(database)/documents/importBatches/$(batchId)).data.uploadedAt);
+    }
+
     function createUsesServerTimestamp(fieldName) {
       return fieldName == request.time;
     }
@@ -59,8 +69,16 @@ service cloud.firestore {
 
     match /importBatches/{document} {
       allow read: if isAllowedUser();
-      allow create: if requestOwnsDocument() && createUsesServerTimestamp(request.resource.data.importedAt);
-      allow delete: if resourceOwnedByCaller() && withinRollbackWindow(resource.data.importedAt);
+      allow create: if requestOwnsDocument() && createUsesServerTimestamp(request.resource.data.uploadedAt);
+      allow delete: if resourceOwnedByCaller() && withinRollbackWindow(resource.data.uploadedAt);
+    }
+
+    match /importBatchRollbacks/{document} {
+      allow read: if isAllowedUser();
+      allow create: if requestOwnsDocument()
+        && createUsesServerTimestamp(request.resource.data.rolledBackAt)
+        && importBatchOwnedByCaller(document)
+        && importBatchWithinRollbackWindow(document);
     }
 
     match /legacyWorkbookImportBatches/{document} {
@@ -76,10 +94,7 @@ service cloud.firestore {
     match /legacyWorkbookImports/{document} {
       allow read: if isAllowedUser();
       allow create: if requestOwnsDocument() && createUsesServerTimestamp(request.resource.data.importedAt);
-      allow update: if isAllowedUser() && (
-        (requestOwnsDocument() && createUsesServerTimestamp(request.resource.data.importedAt))
-        || (resourceOwnedByCaller() && withinRollbackWindow(resource.data.importedAt))
-      );
+      allow update: if resourceOwnedByCaller() && withinRollbackWindow(resource.data.importedAt);
       allow delete: if resourceOwnedByCaller() && withinRollbackWindow(resource.data.importedAt);
     }
   }
