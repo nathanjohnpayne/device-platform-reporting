@@ -133,8 +133,8 @@ Add `localhost` in Firebase Console → Authentication → Settings → Authoriz
 
 **Run at the end of each month**
 
-1. **Platform KPIs** — Download zip from [Looker D+ Device Health Dashboard](https://looker.disneystreaming.com/dashboards/11169?Date+Granularity=monthly&Date+Range=1+month+ago+for+1+month&Device+Family=rust) (Device Family=rust, last complete month) → upload the ZIP directly, or upload the three extracted CSVs manually → review MAU/MAD/Playback Hours/HPV and MoM output → copy to Confluence.
-2. **Regional KPIs** — Same Looker dashboard, filtered by each region (APAC, DOMESTIC, EMEA, LATAM) → upload one CSV per region → review regional MoM table + MAU share pie chart → copy to Confluence.
+1. **Platform KPIs** — Download zip from [Looker D+ Device Health Dashboard](https://looker.disneystreaming.com/dashboards/11169?Date+Granularity=monthly&Date+Range=1+month+ago+for+1+month&Device+Family=rust) (Device Family=rust, last complete month) → upload the ZIP directly, or upload the three extracted CSVs manually → review MAU/MAD/Playback Hours/HPV and MoM output. If the Looker export only contains one month, the app compares it against the most recent saved platform snapshot → copy to Confluence.
+2. **Regional KPIs** — Same Looker dashboard, filtered by each region (APAC, DOMESTIC, EMEA, LATAM) → upload one CSV per region → review regional MoM table + MAU share pie chart. If a regional export only contains one month, the app compares it against the most recent saved regional snapshot → copy to Confluence.
 
 ---
 

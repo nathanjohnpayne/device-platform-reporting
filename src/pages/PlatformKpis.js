@@ -1,10 +1,12 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
+import { collection, getDocs, orderBy, query } from 'firebase/firestore';
 import { CartesianGrid, Legend, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import AutoSaveStatus from '../components/AutoSaveStatus';
 import UploadZone from '../components/UploadZone';
+import { db } from '../firebase';
 import useAutoImport from '../hooks/useAutoImport';
 import { buildLegacyPlatformSnapshot } from '../utils/legacyWorkbooks';
-import { buildMonthlyDataset, buildSummaryRows, buildTrendData, parseLookerMetricRows, parseLookerZip } from '../utils/looker';
+import { buildMonthlyDataset, buildSummaryRows, buildTrendData, mergeMonthlySeries, parseLookerMetricRows, parseLookerZip } from '../utils/looker';
 import { compactNumber, formatChange, getChangeClass, parseNumber } from '../utils/reporting';
 
 const PLATFORM_ORDER = ['PlayStation', 'Xbox', 'ADK'];
@@ -15,6 +17,10 @@ const CHART_METRICS = [
   { key: 'hrs', label: 'Playback Hrs', formatter: (value) => compactNumber(value, 1) },
   { key: 'hpv', label: 'HPV', formatter: (value) => formatHpv(value) },
 ];
+
+function sortPlatformRows(rows) {
+  return [...rows].sort((left, right) => PLATFORM_ORDER.indexOf(left.entity) - PLATFORM_ORDER.indexOf(right.entity));
+}
 
 function formatHpv(value) {
   const numeric = parseNumber(value);
@@ -37,6 +43,24 @@ export default function PlatformKpis() {
   const [copied, setCopied] = useState(false);
   const [uploadSources, setUploadSources] = useState({});
   const [importGeneration, setImportGeneration] = useState(0);
+  const [savedSeriesByPlatform, setSavedSeriesByPlatform] = useState({});
+
+  const loadSavedHistory = () => (
+    getDocs(query(collection(db, 'monthlySnapshots'), orderBy('uploadedAt', 'asc')))
+      .then((snap) => {
+        const savedSeries = snap.docs
+          .map((docSnap) => docSnap.data())
+          .filter((entry) => entry.type === 'platformKpis' && entry.seriesByPlatform)
+          .map((entry) => entry.seriesByPlatform);
+
+        setSavedSeriesByPlatform(mergeMonthlySeries(...savedSeries));
+      })
+      .catch(console.error)
+  );
+
+  useEffect(() => {
+    loadSavedHistory();
+  }, []);
 
   const metricRows = {
     mau: parseLookerMetricRows(uploads.mau || [], 'mau', 'platform'),
@@ -44,12 +68,21 @@ export default function PlatformKpis() {
     hrs: parseLookerMetricRows(uploads.hrs || [], 'hrs', 'platform'),
   };
 
-  const seriesByPlatform = buildMonthlyDataset(metricRows, PLATFORM_ORDER);
-  const summaryRows = buildSummaryRows(seriesByPlatform).filter((row) => row.current.mau != null || row.current.mad != null || row.current.hrs != null);
+  const currentSeriesByPlatform = buildMonthlyDataset(metricRows, PLATFORM_ORDER);
+  const hasCurrentSeries = Object.keys(currentSeriesByPlatform).length > 0;
+  const seriesByPlatform = hasCurrentSeries
+    ? mergeMonthlySeries(savedSeriesByPlatform, currentSeriesByPlatform)
+    : currentSeriesByPlatform;
+  const currentSummaryRows = sortPlatformRows(
+    buildSummaryRows(currentSeriesByPlatform).filter((row) => row.current.mau != null || row.current.mad != null || row.current.hrs != null)
+  );
+  const summaryRows = sortPlatformRows(
+    buildSummaryRows(seriesByPlatform).filter((row) => row.current.mau != null || row.current.mad != null || row.current.hrs != null)
+  );
   const trendData = buildTrendData(seriesByPlatform, chartMetric);
   const legacyPlatformSnapshot = buildLegacyPlatformSnapshot(uploads);
-  const ready = Boolean(uploads.mau && uploads.mad && uploads.hrs && summaryRows.length);
-  const month = summaryRows[0]?.month || new Date().toISOString().slice(0, 7);
+  const ready = Boolean(uploads.mau && uploads.mad && uploads.hrs && currentSummaryRows.length);
+  const month = currentSummaryRows[0]?.month || new Date().toISOString().slice(0, 7);
   const sourceFiles = Object.values(uploadSources).filter(Boolean);
   const autoSaveRequest = ready && importGeneration
     ? {
@@ -64,13 +97,13 @@ export default function PlatformKpis() {
             mad: uploads.mad?.length || 0,
             hrs: uploads.hrs?.length || 0,
           },
-          seriesByPlatform,
-          summaryRows,
+          seriesByPlatform: currentSeriesByPlatform,
+          summaryRows: currentSummaryRows,
           legacyWorkbook: legacyPlatformSnapshot ? { platform: legacyPlatformSnapshot } : null,
         },
         fingerprintData: {
-          seriesByPlatform,
-          summaryRows,
+          seriesByPlatform: currentSeriesByPlatform,
+          summaryRows: currentSummaryRows,
         },
         sourceFiles,
         summary: {
@@ -79,7 +112,10 @@ export default function PlatformKpis() {
         },
       }
     : null;
-  const autoSave = useAutoImport(autoSaveRequest, autoSaveRequest ? `platform-kpis-${importGeneration}` : null);
+  const autoSave = useAutoImport(autoSaveRequest, autoSaveRequest ? `platform-kpis-${importGeneration}` : null, {
+    onSaved: loadSavedHistory,
+    onRolledBack: loadSavedHistory,
+  });
 
   const setMetricUpload = (metricType) => (rows, fields, sourceFileName) => {
     validatePlatformUpload(rows, metricType);
@@ -145,6 +181,7 @@ export default function PlatformKpis() {
           <li>Open the <a href="https://looker.disneystreaming.com/dashboards/11169?Date+Granularity=monthly&Date+Range=1+month+ago+for+1+month&Device+Family=rust" target="_blank" rel="noreferrer">D+ Device Health & Status Dashboard V2.0</a>.</li>
           <li>Set <strong>Date Granularity</strong> = Monthly, <strong>Date Range</strong> = last 1 complete month, <strong>Device Family</strong> = rust.</li>
           <li>Download the Looker zip. Upload the zip directly below, or manually upload the three extracted CSVs if the file names are unusual.</li>
+          <li>If the export contains only the latest month, the app compares it against the most recent saved platform snapshot.</li>
         </ol>
         <div style={{ marginTop: 12 }}>
           <a className="source-link" href="https://looker.disneystreaming.com/dashboards/11169?Date+Granularity=monthly&Date+Range=1+month+ago+for+1+month&Device+Family=rust" target="_blank" rel="noreferrer">🔗 Open Looker Dashboard</a>

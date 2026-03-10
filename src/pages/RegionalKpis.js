@@ -1,8 +1,11 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
+import { collection, getDocs, orderBy, query } from 'firebase/firestore';
 import { Cell, Legend, Pie, PieChart, ResponsiveContainer, Tooltip } from 'recharts';
 import AutoSaveStatus from '../components/AutoSaveStatus';
 import UploadZone from '../components/UploadZone';
+import { db } from '../firebase';
 import useAutoImport from '../hooks/useAutoImport';
+import { mergeMonthlySeries } from '../utils/looker';
 import { compactNumber, formatChange, formatDateLabel, getChangeClass, getFieldValue, normalizeDateValue, parseNumber, toPercentChange } from '../utils/reporting';
 
 const REGIONS = ['DOMESTIC', 'EMEA', 'LATAM', 'APAC'];
@@ -54,15 +57,37 @@ export default function RegionalKpis() {
   const [copied, setCopied] = useState(false);
   const [uploadSources, setUploadSources] = useState({});
   const [importGeneration, setImportGeneration] = useState(0);
+  const [savedSeriesByRegion, setSavedSeriesByRegion] = useState({});
 
-  const rowsByRegion = REGIONS.reduce((acc, region) => {
+  const loadSavedHistory = () => (
+    getDocs(query(collection(db, 'monthlySnapshots'), orderBy('uploadedAt', 'asc')))
+      .then((snap) => {
+        const savedSeries = snap.docs
+          .map((docSnap) => docSnap.data())
+          .filter((entry) => entry.type === 'regionalKpis' && entry.seriesByRegion)
+          .map((entry) => entry.seriesByRegion);
+
+        setSavedSeriesByRegion(mergeMonthlySeries(...savedSeries));
+      })
+      .catch(console.error)
+  );
+
+  useEffect(() => {
+    loadSavedHistory();
+  }, []);
+
+  const currentRowsByRegion = REGIONS.reduce((acc, region) => {
     acc[region] = parseRegionRows(uploads[region] || [], region);
     return acc;
   }, {});
 
-  const summaryRows = buildRegionSummary(rowsByRegion);
-  const loaded = summaryRows.map((row) => row.region);
+  const currentSummaryRows = buildRegionSummary(currentRowsByRegion);
+  const loaded = currentSummaryRows.map((row) => row.region);
   const allLoaded = REGIONS.every((region) => loaded.includes(region));
+  const rowsByRegion = allLoaded
+    ? mergeMonthlySeries(savedSeriesByRegion, currentRowsByRegion)
+    : currentRowsByRegion;
+  const summaryRows = buildRegionSummary(rowsByRegion);
 
   const currentTotals = summaryRows.reduce((acc, row) => ({
     mau: acc.mau + (row.current.mau || 0),
@@ -87,7 +112,7 @@ export default function RegionalKpis() {
     value: row.current.mau || 0,
     pct: currentTotals.mau ? `${(((row.current.mau || 0) / currentTotals.mau) * 100).toFixed(1)}%` : '0%',
   }));
-  const month = summaryRows[0]?.month || new Date().toISOString().slice(0, 7);
+  const month = currentSummaryRows[0]?.month || new Date().toISOString().slice(0, 7);
   const sourceFiles = Object.values(uploadSources).filter(Boolean);
   const autoSaveRequest = allLoaded && importGeneration
     ? {
@@ -101,12 +126,12 @@ export default function RegionalKpis() {
             counts[region] = uploads[region]?.length || 0;
             return counts;
           }, {}),
-          seriesByRegion: rowsByRegion,
-          summaryRows,
+          seriesByRegion: currentRowsByRegion,
+          summaryRows: currentSummaryRows,
         },
         fingerprintData: {
-          seriesByRegion: rowsByRegion,
-          summaryRows,
+          seriesByRegion: currentRowsByRegion,
+          summaryRows: currentSummaryRows,
         },
         sourceFiles,
         summary: {
@@ -115,7 +140,10 @@ export default function RegionalKpis() {
         },
       }
     : null;
-  const autoSave = useAutoImport(autoSaveRequest, autoSaveRequest ? `regional-kpis-${importGeneration}` : null);
+  const autoSave = useAutoImport(autoSaveRequest, autoSaveRequest ? `regional-kpis-${importGeneration}` : null, {
+    onSaved: loadSavedHistory,
+    onRolledBack: loadSavedHistory,
+  });
 
   const setRegionUpload = (region) => (rows, fields, sourceFileName) => {
     validateRegionalUpload(rows, region);
@@ -155,7 +183,7 @@ TOTAL: MAU ${compactNumber(currentTotals.mau, 2)} (${formatChange(totalChanges.m
           <li>Open the <a href="https://looker.disneystreaming.com/dashboards/11169?Date+Granularity=monthly&Date+Range=1+month+ago+for+1+month&Device+Family=rust" target="_blank" rel="noreferrer">D+ Device Health & Status Dashboard V2.0</a>.</li>
           <li>Set <strong>Device Family</strong> = rust, <strong>Date Range</strong> = last 1 complete month.</li>
           <li>For each region (APAC, DOMESTIC, EMEA, LATAM), export the CSV and upload it below.</li>
-          <li>The app compares the most recent month against the previous month available in each region export.</li>
+          <li>The app compares the most recent month against the previous month available in each region export, or the most recent saved regional snapshot when the export includes only one month.</li>
         </ol>
         <a className="source-link" href="https://looker.disneystreaming.com/dashboards/11169?Date+Granularity=monthly&Date+Range=1+month+ago+for+1+month&Device+Family=rust" target="_blank" rel="noreferrer">🔗 Open Looker Dashboard</a>
       </div>
