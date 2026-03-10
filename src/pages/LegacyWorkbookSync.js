@@ -2,14 +2,17 @@ import React, { useEffect, useMemo, useState } from 'react';
 import {
   collection,
   doc,
+  getDoc,
   getDocs,
   query,
   where,
   writeBatch,
 } from 'firebase/firestore';
+import RollbackButton from '../components/RollbackButton';
 import UploadZone from '../components/UploadZone';
 import { db } from '../firebase';
 import { buildAdkVersionMap } from '../utils/adk';
+import { buildImportBatchId, canRollback, formatImportTimestamp, ROLLBACK_WINDOW_MS } from '../utils/importHistory';
 import {
   buildImportSummary,
   buildLegacyWorkbook,
@@ -23,8 +26,16 @@ import {
   rowsToCsvText,
 } from '../utils/legacyWorkbooks';
 
-function formatImportedAt(value) {
-  return value?.toDate?.().toLocaleString() || '—';
+function workbookLabelForType(workbookType) {
+  return workbookType === LEGACY_WORKBOOK_TYPES.program ? 'Program Weekly KPIs' : 'ADK Adoption Burn Down';
+}
+
+function getImportedAtMs(importRecord) {
+  if (!importRecord) return null;
+  if (importRecord.importedAtMs) return importRecord.importedAtMs;
+  if (importRecord.importedAt?.toDate) return importRecord.importedAt.toDate().getTime();
+  if (importRecord.importedAt instanceof Date) return importRecord.importedAt.getTime();
+  return null;
 }
 
 function workbookFilename(prefix) {
@@ -48,6 +59,7 @@ export default function LegacyWorkbookSync() {
 
   const refreshStatus = async () => {
     setLoading(true);
+
     try {
       const [importSnap, monthlySnap, shareSnap, partnerSnap] = await Promise.all([
         getDocs(collection(db, 'legacyWorkbookImports')),
@@ -68,9 +80,10 @@ export default function LegacyWorkbookSync() {
         exportablePlatform: monthlyDocs.filter((docSnap) => docSnap.type === 'platformKpis' && docSnap.legacyWorkbook?.platform).length,
         exportablePartner: partnerDocs.filter((docSnap) => docSnap.rawRows?.length).length,
       });
-    } catch (err) {
-      setError(err.message || 'Unable to load workbook sync status.');
+    } catch (nextError) {
+      setError(nextError.message || 'Unable to load workbook sync status.');
     }
+
     setLoading(false);
   };
 
@@ -92,49 +105,132 @@ export default function LegacyWorkbookSync() {
         throw new Error('Burn down workbook must include at least one non-empty sheet.');
       }
 
-      const existing = await getDocs(query(collection(db, 'legacyWorkbookSheets'), where('workbookType', '==', workbookType)));
-      const nextNames = new Set(workbook.sheets.map((sheet) => sheet.sheetName));
+      const sheetPayloads = workbook.sheets.map((sheet) => ({
+        sheetName: sheet.sheetName,
+        sheetOrder: sheet.sheetOrder,
+        csvText: rowsToCsvText(sheet.rows),
+        rowCount: sheet.rows.length,
+        columnCount: Math.max(...sheet.rows.map((row) => row.length), 0),
+      }));
+      const batchId = await buildImportBatchId(`legacyWorkbook:${workbookType}`, {
+        workbookType,
+        sheets: sheetPayloads,
+      });
+      const importRef = doc(db, 'legacyWorkbookImports', workbookType);
+      const currentImportSnap = await getDoc(importRef);
+      const currentImport = currentImportSnap.exists() ? currentImportSnap.data() : null;
+
+      if (currentImport?.batchId === batchId) {
+        return {
+          status: 'error',
+          message: `${file.name} has already been imported for ${workbookLabelForType(workbookType)}.`,
+        };
+      }
+
+      const workbookLabel = workbookLabelForType(workbookType);
+      const importedAtMs = Date.now();
+      const rollbackUntilMs = importedAtMs + ROLLBACK_WINDOW_MS;
+      const importedAt = new Date(importedAtMs);
       const batch = writeBatch(db);
 
-      existing.docs.forEach((docSnap) => {
-        if (!nextNames.has(docSnap.data().sheetName)) {
-          batch.delete(docSnap.ref);
-        }
-      });
-
-      workbook.sheets.forEach((sheet) => {
-        batch.set(doc(db, 'legacyWorkbookSheets', `${workbookType}::${sheet.sheetName}`), {
+      sheetPayloads.forEach((sheet) => {
+        batch.set(doc(db, 'legacyWorkbookSheets', `${batchId}::${sheet.sheetName}`), {
           workbookType,
+          batchId,
+          batchKey: `${workbookType}::${batchId}`,
           sheetName: sheet.sheetName,
           sheetOrder: sheet.sheetOrder,
           sourceFileName: file.name,
-          csvText: rowsToCsvText(sheet.rows),
-          rowCount: sheet.rows.length,
-          columnCount: Math.max(...sheet.rows.map((row) => row.length), 0),
-          importedAt: new Date(),
+          csvText: sheet.csvText,
+          rowCount: sheet.rowCount,
+          columnCount: sheet.columnCount,
+          importedAt,
+          importedAtMs,
         });
       });
 
-      batch.set(doc(db, 'legacyWorkbookImports', workbookType), {
+      const manifest = {
+        batchId,
         workbookType,
-        workbookLabel: workbookType === LEGACY_WORKBOOK_TYPES.program ? 'Program Weekly KPIs' : 'ADK Adoption Burn Down',
+        workbookLabel,
         sourceFileName: file.name,
         sheetCount: workbook.sheets.length,
         sheetNames: workbook.sheetNames,
-        importedAt: new Date(),
-      });
+        importedAt,
+        importedAtMs,
+        rollbackUntilMs,
+        previousBatchId: currentImport?.batchId || null,
+        previousImport: currentImport || null,
+      };
+
+      batch.set(doc(db, 'legacyWorkbookImportBatches', batchId), manifest);
+      batch.set(importRef, manifest);
 
       await batch.commit();
       await refreshStatus();
-      setStatus(buildImportSummary(workbookType, workbook.sheets));
+
+      setStatus(`${buildImportSummary(workbookType, workbook.sheets)} Rollback available until ${formatImportTimestamp(rollbackUntilMs)}.`);
 
       return {
         status: 'ok',
         message: `${workbook.sheets.length} sheet${workbook.sheets.length === 1 ? '' : 's'} imported from ${file.name}`,
       };
-    } catch (err) {
-      setError(err.message || 'Unable to import workbook.');
-      throw err;
+    } catch (nextError) {
+      setError(nextError.message || 'Unable to import workbook.');
+      throw nextError;
+    } finally {
+      setBusy('');
+    }
+  };
+
+  const rollbackWorkbookImport = (workbookType) => async () => {
+    setBusy(`rollback:${workbookType}`);
+    setStatus('');
+    setError('');
+
+    try {
+      const importRef = doc(db, 'legacyWorkbookImports', workbookType);
+      const currentImportSnap = await getDoc(importRef);
+
+      if (!currentImportSnap.exists()) {
+        throw new Error('There is no active workbook import to roll back.');
+      }
+
+      const currentImport = currentImportSnap.data();
+
+      if (!canRollback(currentImport.rollbackUntilMs)) {
+        throw new Error('Only workbook imports from the last 30 days can be rolled back.');
+      }
+
+      const batch = writeBatch(db);
+
+      if (currentImport.previousBatchId) {
+        const previousBatchSnap = await getDoc(doc(db, 'legacyWorkbookImportBatches', currentImport.previousBatchId));
+
+        if (!previousBatchSnap.exists()) {
+          throw new Error('The previous workbook baseline could not be found.');
+        }
+
+        batch.set(importRef, previousBatchSnap.data());
+      } else if (currentImport.previousImport) {
+        batch.set(importRef, currentImport.previousImport);
+      } else {
+        batch.delete(importRef);
+      }
+
+      await batch.commit();
+      await refreshStatus();
+
+      setStatus(
+        currentImport.previousBatchId
+          ? `${workbookLabelForType(workbookType)} rolled back to the previous imported baseline.`
+          : currentImport.previousImport
+            ? `${workbookLabelForType(workbookType)} rolled back to the previous baseline import.`
+          : `${workbookLabelForType(workbookType)} rolled back. No baseline import is active now.`
+      );
+    } catch (nextError) {
+      setError(nextError.message || 'Unable to roll back workbook import.');
+      throw nextError;
     } finally {
       setBusy('');
     }
@@ -146,8 +242,17 @@ export default function LegacyWorkbookSync() {
     setError('');
 
     try {
+      const currentImportSnap = await getDoc(doc(db, 'legacyWorkbookImports', workbookType));
+
+      if (!currentImportSnap.exists()) {
+        throw new Error('Import a baseline workbook before exporting a merged file.');
+      }
+
+      const currentImport = currentImportSnap.data();
       const [sheetSnap, monthlySnap, shareSnap, partnerSnap, adkSnap] = await Promise.all([
-        getDocs(query(collection(db, 'legacyWorkbookSheets'), where('workbookType', '==', workbookType))),
+        currentImport.batchId
+          ? getDocs(query(collection(db, 'legacyWorkbookSheets'), where('batchKey', '==', `${workbookType}::${currentImport.batchId}`)))
+          : getDocs(query(collection(db, 'legacyWorkbookSheets'), where('workbookType', '==', workbookType))),
         getDocs(collection(db, 'monthlySnapshots')),
         getDocs(collection(db, 'adkVersionShare')),
         getDocs(collection(db, 'partnerMigration')),
@@ -179,11 +284,13 @@ export default function LegacyWorkbookSync() {
           : workbookFilename('ADK Adoption Burn Down')
       );
 
-      setStatus(workbookType === LEGACY_WORKBOOK_TYPES.program
-        ? 'Program workbook exported with imported baseline + app-collected history.'
-        : 'Burn down workbook exported with imported baseline + saved Sentry history.');
-    } catch (err) {
-      setError(err.message || 'Unable to export workbook.');
+      setStatus(
+        workbookType === LEGACY_WORKBOOK_TYPES.program
+          ? 'Program workbook exported with imported baseline + app-collected history.'
+          : 'Burn down workbook exported with imported baseline + saved Sentry history.'
+      );
+    } catch (nextError) {
+      setError(nextError.message || 'Unable to export workbook.');
     } finally {
       setBusy('');
     }
@@ -196,7 +303,8 @@ export default function LegacyWorkbookSync() {
       subtitle: 'Import the existing spreadsheet that contains Active Users, Active Devices, Total Playback Hours, ADK Version Share, Regional KPIs, and supporting tabs.',
       label: 'Drop Program KPI workbook here',
       filename: imports[LEGACY_WORKBOOK_TYPES.program]?.sourceFileName,
-      importedAt: imports[LEGACY_WORKBOOK_TYPES.program]?.importedAt,
+      importedAtMs: getImportedAtMs(imports[LEGACY_WORKBOOK_TYPES.program]),
+      rollbackUntilMs: imports[LEGACY_WORKBOOK_TYPES.program]?.rollbackUntilMs,
     },
     {
       key: LEGACY_WORKBOOK_TYPES.burnDown,
@@ -204,7 +312,8 @@ export default function LegacyWorkbookSync() {
       subtitle: 'Import the historical Discover workbook so the app can append new weekly Sentry exports back into the same file family.',
       label: 'Drop Burn Down workbook here',
       filename: imports[LEGACY_WORKBOOK_TYPES.burnDown]?.sourceFileName,
-      importedAt: imports[LEGACY_WORKBOOK_TYPES.burnDown]?.importedAt,
+      importedAtMs: getImportedAtMs(imports[LEGACY_WORKBOOK_TYPES.burnDown]),
+      rollbackUntilMs: imports[LEGACY_WORKBOOK_TYPES.burnDown]?.rollbackUntilMs,
     },
   ]), [imports]);
 
@@ -248,14 +357,14 @@ export default function LegacyWorkbookSync() {
           <div className="kpi-value">{Object.keys(imports).length}</div>
           <div className="text-muted">
             {loading
-              ? 'Loading…'
-              : `Program ${imports[LEGACY_WORKBOOK_TYPES.program] ? '✓' : '—'} / Burn Down ${imports[LEGACY_WORKBOOK_TYPES.burnDown] ? '✓' : '—'}`}
+              ? 'Loading...'
+              : `Program ${imports[LEGACY_WORKBOOK_TYPES.program] ? '✓' : '-'} / Burn Down ${imports[LEGACY_WORKBOOK_TYPES.burnDown] ? '✓' : '-'}`}
           </div>
         </div>
       </div>
 
       {status && <div className="alert alert-success">✅ {status}</div>}
-      {error && <div className="alert alert-danger">❌ {error}</div>}
+      {error && <div className="alert alert-error">❌ {error}</div>}
 
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20, marginBottom: 20 }}>
         {importCards.map((card) => (
@@ -272,7 +381,25 @@ export default function LegacyWorkbookSync() {
               {card.filename ? (
                 <>
                   <div><strong>Imported file:</strong> {card.filename}</div>
-                  <div><strong>Imported at:</strong> {formatImportedAt(card.importedAt)}</div>
+                  <div><strong>Imported at:</strong> {formatImportTimestamp(card.importedAtMs)}</div>
+                  {card.rollbackUntilMs ? (
+                    <div style={{ marginTop: 10, display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+                      <RollbackButton
+                        subject={`${card.title.toLowerCase()} baseline`}
+                        rollbackUntilMs={card.rollbackUntilMs}
+                        onConfirm={rollbackWorkbookImport(card.key)}
+                        disabled={busy === `rollback:${card.key}`}
+                        label="Roll back import"
+                      />
+                      <span className="text-muted">
+                        {canRollback(card.rollbackUntilMs) ? `Until ${formatImportTimestamp(card.rollbackUntilMs)}` : '30-day window expired'}
+                      </span>
+                    </div>
+                  ) : (
+                    <div className="text-muted" style={{ marginTop: 10 }}>
+                      Rollback is available for workbook imports created after this feature was added.
+                    </div>
+                  )}
                 </>
               ) : (
                 <div>No historical baseline imported yet.</div>
@@ -291,14 +418,14 @@ export default function LegacyWorkbookSync() {
             onClick={() => exportWorkbook(LEGACY_WORKBOOK_TYPES.program)}
             disabled={busy === `export:${LEGACY_WORKBOOK_TYPES.program}`}
           >
-            {busy === `export:${LEGACY_WORKBOOK_TYPES.program}` ? 'Exporting…' : '⬇️ Export Program Weekly KPIs'}
+            {busy === `export:${LEGACY_WORKBOOK_TYPES.program}` ? 'Exporting...' : '⬇️ Export Program Weekly KPIs'}
           </button>
           <button
             className="btn btn-secondary"
             onClick={() => exportWorkbook(LEGACY_WORKBOOK_TYPES.burnDown)}
             disabled={busy === `export:${LEGACY_WORKBOOK_TYPES.burnDown}`}
           >
-            {busy === `export:${LEGACY_WORKBOOK_TYPES.burnDown}` ? 'Exporting…' : '⬇️ Export ADK Burn Down'}
+            {busy === `export:${LEGACY_WORKBOOK_TYPES.burnDown}` ? 'Exporting...' : '⬇️ Export ADK Burn Down'}
           </button>
         </div>
         <div style={{ marginTop: 14, fontSize: 12, color: '#475569', lineHeight: 1.6 }}>
