@@ -6,6 +6,7 @@ import UploadZone from '../components/UploadZone';
 import { db } from '../firebase';
 import useAutoImport from '../hooks/useAutoImport';
 import { buildAdkVersionMap, resolveAdkVersionLabel } from '../utils/adk';
+import { parseConvivaVersionShareRows } from '../utils/conviva';
 import {
   compactNumber,
   compareDateValues,
@@ -160,6 +161,22 @@ export default function AdkVersionShare() {
     setImportGeneration((current) => current + 1);
   };
 
+  const handleConvivaUpload = async (file) => {
+    const text = await file.text();
+    const rows = parseConvivaVersionShareRows(text);
+    validateVersionShareRows(rows);
+    onParsed(rows, file.name);
+
+    const versionCount = new Set(
+      rows.map((row) => String(getFieldValue(row, ['core_version', 'core version', 'ADK Version', 'adk_version']) || '').trim()).filter(Boolean)
+    ).size;
+
+    return {
+      status: 'ok',
+      message: `${rows.length.toLocaleString()} version data points loaded across ${versionCount.toLocaleString()} versions`,
+    };
+  };
+
   const generateConfluence = () => {
     if (!analysis.pieData.length) return '';
     const lines = analysis.pieData
@@ -207,7 +224,7 @@ export default function AdkVersionShare() {
       <div className="card">
         <div className="card-title">Upload Conviva Export</div>
         <div className="card-subtitle">CSV export from "NCP+ADK: ADK Version Comparisons (D+)" — last 30 days</div>
-        <UploadZone label="Drop Conviva ADK Version Share CSV here" onParsed={(rows, fields, sourceFileName) => onParsed(rows, sourceFileName)} />
+        <UploadZone label="Drop Conviva ADK Version Share CSV here" onFileSelected={handleConvivaUpload} />
       </div>
 
       {analysis.pieData.length > 0 && (
