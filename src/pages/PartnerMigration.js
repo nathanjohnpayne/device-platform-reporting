@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { addDoc, collection, getDocs, serverTimestamp } from 'firebase/firestore';
 import UploadZone from '../components/UploadZone';
 import { db } from '../firebase';
+import { buildAdkVersionMap, resolveAdkVersionLabel } from '../utils/adk';
 import { getFieldValue, parseNumber } from '../utils/reporting';
 
 function deriveCurrentGa(versions) {
@@ -19,7 +20,7 @@ function buildPartnerSummary(rows, adkMap, currentGa, minDevices) {
   rows.forEach((row) => {
     const partner = getFieldValue(row, ['partner', 'Partner']) || 'Unknown';
     const coreVersion = getFieldValue(row, ['core_version', 'core version']);
-    const adkVersion = adkMap[coreVersion] || coreVersion || 'Unknown';
+    const adkVersion = resolveAdkVersionLabel(coreVersion, adkMap);
     const count = parseNumber(getFieldValue(row, ['count_unique_device_id', 'unique_devices', 'Unique Devices'])) || 0;
 
     if (!partnerMap[partner]) partnerMap[partner] = {};
@@ -61,13 +62,7 @@ export default function PartnerMigration() {
     getDocs(collection(db, 'adkVersions'))
       .then((snap) => {
         const versions = snap.docs.map((docSnap) => docSnap.data());
-        const map = {};
-        versions.forEach((version) => {
-          (version.coreVersions || [version.coreVersion]).forEach((coreVersion) => {
-            if (coreVersion) map[coreVersion] = version.adkVersion;
-          });
-        });
-        setAdkMap(map);
+        setAdkMap(buildAdkVersionMap(versions));
         setCurrentGa(deriveCurrentGa(versions));
       })
       .catch(console.error);
