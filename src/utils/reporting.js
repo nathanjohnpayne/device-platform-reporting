@@ -65,7 +65,7 @@ export function getFieldValue(row, candidates) {
 }
 
 export function guessDateKey(row) {
-  return Object.keys(row || {}).find((key) => /(date|day|week|month|period)/i.test(key)) || null;
+  return Object.keys(row || {}).find((key) => /(timestamp|time|date|day|week|month|period)/i.test(key)) || null;
 }
 
 function pad(value) {
