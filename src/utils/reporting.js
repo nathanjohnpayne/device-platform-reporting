@@ -115,7 +115,51 @@ export function sortDateValues(values) {
   return [...values].sort(compareDateValues);
 }
 
+const MONTH_INDEX = {
+  jan: 1,
+  feb: 2,
+  mar: 3,
+  apr: 4,
+  may: 5,
+  jun: 6,
+  jul: 7,
+  aug: 8,
+  sep: 9,
+  oct: 10,
+  nov: 11,
+  dec: 12,
+};
+
 export function formatDateLabel(value) {
+  const raw = String(value || '').trim();
+  const convivaMatch = raw.match(/^([A-Za-z]{3})-(\d{1,2})-(\d{4})(?:\s+(\d{2}):(\d{2})(?::(\d{2}))?)?/);
+
+  if (convivaMatch) {
+    const [, monthName, day, year, hour = '00', minute = '00', second = '00'] = convivaMatch;
+    const month = MONTH_INDEX[monthName.toLowerCase()];
+
+    if (month) {
+      const date = new Date(Date.UTC(Number(year), month - 1, Number(day), Number(hour), Number(minute), Number(second)));
+
+      if (hour === '00' && minute === '00' && second === '00') {
+        return date.toLocaleDateString('en-US', {
+          month: 'short',
+          day: 'numeric',
+          timeZone: 'UTC',
+        });
+      }
+
+      return date.toLocaleString('en-US', {
+        month: 'short',
+        day: 'numeric',
+        hour: 'numeric',
+        minute: '2-digit',
+        hour12: true,
+        timeZone: 'UTC',
+      });
+    }
+  }
+
   const normalized = normalizeDateValue(value);
   if (!normalized) return '';
   if (/^\d{4}-\d{2}$/.test(normalized)) {
@@ -141,8 +185,8 @@ export function classifyMetric(key = '') {
   const normalized = normalizeFieldName(key);
   if (normalized.includes('vsf')) return 'vsf';
   if (normalized.includes('vpf')) return 'vpf';
-  if (normalized.includes('attempt')) return 'attempts';
   if (normalized.includes('uniquedevice') || normalized.includes('devicewithattempt') || normalized.includes('countuniquedevice')) return 'uniqueDevices';
+  if (normalized.includes('attempt')) return 'attempts';
   return null;
 }
 
