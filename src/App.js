@@ -13,6 +13,7 @@ import PlatformKpis from './pages/PlatformKpis';
 import RegionalKpis from './pages/RegionalKpis';
 import AdkVersionManager from './pages/AdkVersionManager';
 import History from './pages/History';
+import LegacyWorkbookSync from './pages/LegacyWorkbookSync';
 import './styles.css';
 
 function PageTitle({ title }) {
@@ -34,6 +35,7 @@ const TITLES = {
   '/regional-kpis':         'Regional KPIs',
   '/adk-versions':          'ADK Version Manager',
   '/history':               'Historical Data',
+  '/legacy-sync':           'Legacy Workbook Sync',
 };
 
 function AppShell() {
@@ -71,6 +73,7 @@ function AppShell() {
             <Route path="/regional-kpis"         element={<RegionalKpis />} />
             <Route path="/adk-versions"          element={<AdkVersionManager />} />
             <Route path="/history"               element={<History />} />
+            <Route path="/legacy-sync"           element={<LegacyWorkbookSync />} />
             <Route path="*"                      element={<Navigate to="/" replace />} />
           </Routes>
         </div>
