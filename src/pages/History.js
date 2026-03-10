@@ -7,17 +7,18 @@ import { canRollback, formatImportTimestamp, getRollbackUntilMs, rollbackImportS
 
 function renderRollbackAction(row, setRows, rollingBackId, setRollingBackId, subject) {
   const rollbackUntilMs = row.rollbackUntilMs || getRollbackUntilMs(timestampToMs(row.uploadedAt));
+  const otherRowRollingBack = Boolean(rollingBackId) && rollingBackId !== row.id;
 
   if (!row.importBatchId) {
     return <span className="text-muted">Legacy save</span>;
   }
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 6, opacity: rollingBackId && rollingBackId !== row.id ? 0.65 : 1 }}>
+    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 6, opacity: otherRowRollingBack ? 0.65 : 1 }}>
       <RollbackButton
         subject={subject}
         rollbackUntilMs={rollbackUntilMs}
-        disabled={Boolean(rollingBackId)}
+        disabled={otherRowRollingBack}
         onConfirm={async () => {
           setRollingBackId(row.id);
 

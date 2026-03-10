@@ -226,6 +226,8 @@ export default function LegacyWorkbookSync() {
       } else if (currentImport.previousImport) {
         batch.set(importRef, currentImport.previousImport);
       } else {
+        // This was the first baseline ever imported for this workbook type, so rollback
+        // intentionally clears the active manifest instead of restoring a prior version.
         batch.delete(importRef);
       }
 
