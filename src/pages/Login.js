@@ -1,6 +1,7 @@
 // pages/Login.js
 import React from 'react';
 import { useAuth } from '../hooks/useAuth';
+import SiteLogo from '../components/SiteLogo';
 
 export default function Login() {
   const { signIn, denied } = useAuth();
@@ -8,7 +9,7 @@ export default function Login() {
   return (
     <div className="login-page">
       <div className="login-card">
-        <div className="login-logo">📺</div>
+        <SiteLogo className="login-logo" />
         <h1>NCP+ADK Program Weekly KPIs</h1>
         <p>Disney Streaming · Partnerships &amp; Devices<br/>Sign in with your Disney or Disney Streaming account to continue.</p>
 

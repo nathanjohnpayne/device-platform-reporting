@@ -3,6 +3,7 @@ import React from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './hooks/useAuth';
 import Sidebar from './components/Sidebar';
+import SiteLogo from './components/SiteLogo';
 import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
 import PlaybackPerformance from './pages/PlaybackPerformance';
@@ -43,7 +44,7 @@ function AppShell() {
     return (
       <div style={{ height: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#f0f4f8' }}>
         <div style={{ textAlign: 'center' }}>
-          <div style={{ fontSize: 40, marginBottom: 16 }}>📺</div>
+          <SiteLogo className="loading-logo" />
           <div style={{ fontSize: 14, color: '#64748b' }}>Loading NCP+ADK KPI Dashboard…</div>
         </div>
       </div>
