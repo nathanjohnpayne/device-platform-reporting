@@ -236,9 +236,9 @@ export default function LegacyWorkbookSync() {
 
       setStatus(
         currentImport.previousBatchId
-          ? `${workbookLabelForType(workbookType)} rolled back to the previous imported baseline.`
+          ? `${workbookLabelForType(workbookType)} rolled back to the previous baseline batch.`
           : currentImport.previousImport
-            ? `${workbookLabelForType(workbookType)} rolled back to the previous baseline import.`
+            ? `${workbookLabelForType(workbookType)} rolled back to the prior manifest snapshot.`
           : `${workbookLabelForType(workbookType)} rolled back. No baseline import is active now.`
       );
     } catch (nextError) {

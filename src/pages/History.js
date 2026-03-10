@@ -26,7 +26,7 @@ function renderRollbackAction(row, setRows, rollingBackId, setRollingBackId, sub
             await rollbackImportSnapshot(row.importBatchId);
             setRows((prev) => prev.filter((entry) => entry.id !== row.id));
           } finally {
-            setRollingBackId('');
+            setRollingBackId(null);
           }
         }}
       />
@@ -40,7 +40,7 @@ function renderRollbackAction(row, setRows, rollingBackId, setRollingBackId, sub
 function HistoryTable({ title, collectionName, columns }) {
   const [rows, setRows]       = useState([]);
   const [loading, setLoading] = useState(true);
-  const [rollingBackId, setRollingBackId] = useState('');
+  const [rollingBackId, setRollingBackId] = useState(null);
 
   useEffect(() => {
     getDocs(query(collection(db, collectionName), orderBy('uploadedAt', 'desc'), limit(50)))
