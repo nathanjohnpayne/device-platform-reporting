@@ -10,14 +10,6 @@ import {
   toPercentChange,
 } from './reporting';
 
-const PLATFORM_ALIASES = [
-  ['playstation', 'PlayStation'],
-  ['ps', 'PlayStation'],
-  ['xbox', 'Xbox'],
-  ['adk', 'ADK'],
-  ['stb', 'ADK'],
-];
-
 const REGION_ALIASES = [
   ['domestic', 'DOMESTIC'],
   ['emea', 'EMEA'],
@@ -35,6 +27,15 @@ const DATE_FIELD_CANDIDATES = ['Month', 'month', 'Date', 'date', 'Period', 'peri
 const PLATFORM_FIELD_CANDIDATES = ['Device Platform', 'Platform', 'platform', 'Partner Device Platform', 'partner_device_platform'];
 const REGION_FIELD_CANDIDATES = ['Region', 'region', 'Territory', 'territory', 'Geo', 'geo'];
 
+function detectPlatformGroup(rawValue, fallback = '') {
+  const value = String(rawValue || '').trim();
+  const normalized = normalizeFieldName(value);
+  if (!normalized) return fallback;
+  if (normalized.includes('playstation') || normalized.includes('ps4') || normalized.includes('ps5')) return 'PlayStation';
+  if (normalized.includes('xbox')) return 'Xbox';
+  return 'ADK';
+}
+
 function detectAlias(rawValue, aliases, fallback = 'Unknown') {
   const value = String(rawValue || '').trim();
   const normalized = normalizeFieldName(value);
@@ -45,10 +46,10 @@ function detectAlias(rawValue, aliases, fallback = 'Unknown') {
 }
 
 export function identifyMetricTypeFromFilename(filename = '') {
-  const normalized = normalizeFieldName(filename);
-  if (normalized.includes('activeaccount') || normalized.includes('mau')) return 'mau';
-  if (normalized.includes('activedevice') || normalized.includes('mad')) return 'mad';
-  if (normalized.includes('playbackhour') || normalized.includes('hours')) return 'hrs';
+  const basename = filename.split('/').pop()?.toLowerCase() || '';
+  if (basename === 'active_accounts.csv' || basename === 'active_accounts_(data).csv') return 'mau';
+  if (basename === 'active_devices.csv' || basename === 'active_devices_(data).csv') return 'mad';
+  if (basename === 'playback_hours.csv' || basename === 'playback_hours_(data).csv') return 'hrs';
   return null;
 }
 
@@ -73,13 +74,42 @@ function pickMetricValue(row, metricType) {
 }
 
 export function parseLookerMetricRows(rows, metricType, dimension = 'platform') {
+  if (dimension === 'platform' && rows?.length) {
+    const firstRow = rows[0] || {};
+    const keys = Object.keys(firstRow);
+    const firstColumn = keys[0];
+    const isPivotedPlatformTable = keys.length > 2
+      && normalizeFieldName(firstColumn) === normalizeFieldName('Device Platform')
+      && (String(firstRow[firstColumn] || '').toLowerCase() === 'date' || String(firstRow[firstColumn] || '').toLowerCase() === 'view granularity');
+
+    if (isPivotedPlatformTable) {
+      return rows
+        .slice(1)
+        .flatMap((row) => {
+          const month = normalizeDateValue(row[firstColumn]);
+          if (!month) return [];
+
+          return keys
+            .slice(1)
+            .map((column) => {
+              const value = parseNumber(row[column]);
+              const entity = detectPlatformGroup(column, '');
+              if (!entity || value == null) return null;
+              return { month, entity, value };
+            })
+            .filter(Boolean);
+        })
+        .sort((a, b) => compareDateValues(a.month, b.month));
+    }
+  }
+
   return (rows || [])
     .map((row) => {
       const month = normalizeDateValue(getFieldValue(row, DATE_FIELD_CANDIDATES));
       const entityRaw = getFieldValue(row, dimension === 'region' ? REGION_FIELD_CANDIDATES : PLATFORM_FIELD_CANDIDATES);
       const entity = dimension === 'region'
         ? detectAlias(entityRaw, REGION_ALIASES, '')
-        : detectAlias(entityRaw, PLATFORM_ALIASES, '');
+        : detectPlatformGroup(entityRaw, '');
       const value = pickMetricValue(row, metricType);
 
       if (!month || !entity || value == null) return null;
@@ -160,7 +190,10 @@ export async function parseLookerZip(file) {
   const zip = await JSZip.loadAsync(await file.arrayBuffer());
   const parsedFiles = [];
 
-  const entries = Object.values(zip.files).filter((entry) => !entry.dir && entry.name.toLowerCase().endsWith('.csv'));
+  const entries = Object.values(zip.files)
+    .filter((entry) => !entry.dir && entry.name.toLowerCase().endsWith('.csv'))
+    .filter((entry) => identifyMetricTypeFromFilename(entry.name));
+
   for (const entry of entries) {
     const content = await entry.async('string');
     const result = Papa.parse(content, {
@@ -168,8 +201,9 @@ export async function parseLookerZip(file) {
       skipEmptyLines: true,
     });
 
-    if (result.errors?.length) {
-      throw new Error(result.errors[0].message);
+    const blockingError = (result.errors || []).find((error) => error.code !== 'UndetectableDelimiter');
+    if (blockingError) {
+      throw new Error(blockingError.message);
     }
 
     parsedFiles.push({
