@@ -42,7 +42,7 @@ export default function UploadZone({ label, hint, expectedColumns, onParsed, onF
         }
         setStatus('ok');
         setMessage(`${data.length.toLocaleString()} rows loaded`);
-        onParsed(data, meta.fields);
+        onParsed(data, meta.fields, file.name);
       },
       error: (err) => {
         setStatus('error');

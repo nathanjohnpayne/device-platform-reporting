@@ -48,6 +48,7 @@ function buildPartnerSummary(rows, adkMap, currentGa, minDevices) {
 
 export default function PartnerMigration() {
   const [data, setData] = useState(null);
+  const [uploadMeta, setUploadMeta] = useState({ rawHeaders: [], sourceFileName: '' });
   const [adkMap, setAdkMap] = useState({});
   const [currentGa, setCurrentGa] = useState('Unknown');
   const [saving, setSaving] = useState(false);
@@ -72,9 +73,13 @@ export default function PartnerMigration() {
   const legacyPartners = partners.filter((partner) => partner.legacyPct > config.legacyAlertPct);
   const allVersions = [...new Set(partners.flatMap((partner) => Object.keys(partner.versions)))];
 
-  const onParsed = (rows) => {
+  const onParsed = (rows, fields, sourceFileName) => {
     setSaved(false);
     setData(rows);
+    setUploadMeta({
+      rawHeaders: fields || [],
+      sourceFileName: sourceFileName || '',
+    });
   };
 
   const generateNotes = () => {
@@ -100,6 +105,9 @@ export default function PartnerMigration() {
         currentGa,
         thresholds: config,
         partners,
+        rawHeaders: uploadMeta.rawHeaders,
+        rawRows: data,
+        sourceFileName: uploadMeta.sourceFileName,
         uploadedAt: serverTimestamp(),
       });
       setSaved(true);

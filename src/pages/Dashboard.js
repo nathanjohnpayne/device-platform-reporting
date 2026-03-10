@@ -58,6 +58,15 @@ const workflows = [
     desc: 'Add or edit ADK version → core_version mappings used across all partner migration and version share workflows.',
     source: 'Firestore',
   },
+  {
+    to: '/legacy-sync',
+    icon: '📚',
+    badge: 'Admin',
+    badgeCls: 'badge-admin',
+    title: 'Legacy Workbook Sync',
+    desc: 'Import the historical Google Sheets workbooks and export merged replacement files with legacy + app-collected data.',
+    source: 'Excel / Firestore',
+  },
 ];
 
 export default function Dashboard() {

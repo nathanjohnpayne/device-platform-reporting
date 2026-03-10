@@ -17,6 +17,7 @@ Replaces 30–45 minutes of manual Monday-morning work with a 5-minute upload-an
 | Platform KPIs | Monthly | Looker ZIP / CSV | MAU, MAD, Playback Hours, HPV by platform (PS, Xbox, ADK) with MoM % |
 | Regional KPIs | Monthly | Looker CSV | MAU, MAD, Playback Hours by region with MoM % |
 | ADK Version Manager | Admin | Firestore | Add/edit ADK version → core_version mappings |
+| Legacy Workbook Sync | Admin | Excel + Firestore | Import historical Google Sheets workbooks and export merged replacement `.xlsx` files |
 
 ---
 
@@ -137,6 +138,25 @@ Add `localhost` in Firebase Console → Authentication → Settings → Authoriz
 
 ---
 
+## Legacy workbook round-trip
+
+Use **Legacy Workbook Sync** in the sidebar when you need to keep the historical Google Sheets up to date for teams that still rely on them.
+
+1. Import the current copies of:
+   - `NCP+ADK Program Weekly KPIs.xlsx`
+   - `ADK Adoption Burn Down 2025.xlsx`
+2. Continue saving data through the normal app workflows.
+3. Export merged replacement workbooks whenever you need to refresh the legacy Google Sheets.
+
+Notes:
+- Imported workbook sheets are stored in Firestore as the historical baseline.
+- Import only trusted internal workbook exports. The app reads each spreadsheet locally in the browser and stores sheet contents in Firestore as the export baseline.
+- New **Partner Migration** saves now retain the raw Sentry rows needed to recreate Discover tabs in the burn-down workbook.
+- New **Platform KPIs** saves now retain the partner-level workbook row data needed to rebuild the legacy monthly tabs.
+- Older platform snapshots saved before this feature do not contain that partner-level workbook payload, so import the legacy workbook first if you need complete monthly history.
+
+---
+
 ## Firestore data structure
 
 ```
@@ -145,6 +165,8 @@ weeklySnapshots/      — Playback Performance uploads + generated narrative sna
 adkVersionShare/      — Weekly ADK version share history and saved trend data
 partnerMigration/     — Weekly partner migration snapshots + thresholds used
 monthlySnapshots/     — Computed platform/regional monthly series, summary rows, row counts
+legacyWorkbookImports/ — Workbook import manifests (latest imported source file + sheet list)
+legacyWorkbookSheets/  — Sheet-level historical workbook baseline used for export
 ```
 
 ---
