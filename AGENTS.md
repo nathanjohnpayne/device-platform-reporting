@@ -2,7 +2,7 @@
 
 ## Purpose
 
-This repository is a small, single-page React app for Disney Streaming's NCP+ADK KPI reporting workflow. It helps authenticated users upload CSV exports from Conviva, Sentry, and Looker, review charts/tables, save snapshots to Firestore, and copy Confluence-ready output.
+This repository is a small, single-page React app for Disney Streaming's NCP+ADK KPI reporting workflow. It helps authenticated users upload CSV exports from Conviva, Sentry, and Looker, review charts/tables, save snapshots to Firestore, copy Confluence-ready output, and round-trip legacy Excel workbooks that other teams still use.
 
 The codebase is intentionally simple. Keep changes aligned with the existing client-side architecture unless the task explicitly asks for a larger redesign.
 
@@ -19,6 +19,7 @@ The codebase is intentionally simple. Keep changes aligned with the existing cli
 - React Router 7
 - Recharts for charting
 - Papa Parse for CSV parsing
+- SheetJS/XLSX for legacy workbook import/export
 - Firebase Web SDK for auth, Firestore, storage, analytics
 - Webpack 5 + Babel
 
@@ -54,7 +55,9 @@ The codebase is intentionally simple. Keep changes aligned with the existing cli
 - [`src/pages/PlatformKpis.js`](/Users/nathanpayne/GitHub/device-platform-reporting/src/pages/PlatformKpis.js): monthly Looker upload flow for platform KPIs, save to `monthlySnapshots`.
 - [`src/pages/RegionalKpis.js`](/Users/nathanpayne/GitHub/device-platform-reporting/src/pages/RegionalKpis.js): monthly Looker upload flow for regional KPIs, save to `monthlySnapshots`.
 - [`src/pages/AdkVersionManager.js`](/Users/nathanpayne/GitHub/device-platform-reporting/src/pages/AdkVersionManager.js): editable ADK version reference table in Firestore.
+- [`src/pages/LegacyWorkbookSync.js`](/Users/nathanpayne/GitHub/device-platform-reporting/src/pages/LegacyWorkbookSync.js): imports historical `.xlsx` workbooks and exports merged replacement workbooks.
 - [`src/pages/History.js`](/Users/nathanpayne/GitHub/device-platform-reporting/src/pages/History.js): recent snapshot browser across Firestore collections.
+- [`src/utils/legacyWorkbooks.js`](/Users/nathanpayne/GitHub/device-platform-reporting/src/utils/legacyWorkbooks.js): workbook parsing, legacy sheet normalization, and export builders.
 - [`src/styles.css`](/Users/nathanpayne/GitHub/device-platform-reporting/src/styles.css): all global styles.
 - [`firebase.json`](/Users/nathanpayne/GitHub/device-platform-reporting/firebase.json), [`firestore.rules`](/Users/nathanpayne/GitHub/device-platform-reporting/firestore.rules), [`storage.rules`](/Users/nathanpayne/GitHub/device-platform-reporting/storage.rules): hosting and Firebase security config.
 
@@ -67,6 +70,7 @@ The codebase is intentionally simple. Keep changes aligned with the existing cli
 - `/platform-kpis`
 - `/regional-kpis`
 - `/adk-versions`
+- `/legacy-sync`
 - `/history`
 
 ## Data Flow Pattern
@@ -101,6 +105,12 @@ Current collection usage in code:
   - Mixed collection for monthly flows.
   - `platformKpis` docs store computed `seriesByPlatform`, `summaryRows`, and row counts.
   - `regionalKpis` docs store computed `seriesByRegion`, `summaryRows`, and row counts.
+- `legacyWorkbookImports`
+  - One manifest doc per imported legacy workbook.
+  - Tracks source filename, sheet list, sheet count, and import timestamp.
+- `legacyWorkbookSheets`
+  - Sheet-level baseline for imported legacy workbooks.
+  - Stores one doc per workbook/sheet pair with formatted CSV text for export rebuilding.
 
 ## Important Workflow Details
 
@@ -122,12 +132,14 @@ Current collection usage in code:
 - Current GA is derived from the `adkVersions` entry marked current/GA, with release date as fallback.
 - Minimum-device and legacy alert thresholds are configurable in the page UI.
 - Unmapped `core_version` values are intentionally treated as legacy until the reference table is updated.
+- Newer saves also store `rawRows`, `rawHeaders`, and `sourceFileName` so the legacy burn-down workbook can recreate weekly Discover tabs.
 
 ### Platform KPIs
 
 - Supports either a Looker ZIP upload or three manual CSV uploads.
 - MAU, MAD, Playback Hours, and HPV are merged into a single per-platform monthly series with MoM output.
 - Firestore stores computed monthly series, not the raw Looker uploads.
+- Newer saves also store a compact `legacyWorkbook.platform` payload so the app can append partner-level monthly rows back into the legacy spreadsheet export.
 
 ### Regional KPIs
 
@@ -140,6 +152,18 @@ Current collection usage in code:
 - Seed data is defined inline as `SEED_VERSIONS`.
 - The manager is operationally important because both ADK Version Share and Partner Migration depend on it for `core_version` mapping.
 - Add/edit flow warns on duplicate `core_version` mappings and previews how the entry will be interpreted by downstream workflows.
+
+### Legacy Workbook Sync
+
+- Imports two workbook families:
+  - Program Weekly KPIs
+  - ADK Adoption Burn Down
+- Imported sheets are stored in Firestore as the historical baseline and are not written into the main analytics collections.
+- Program workbook export merges imported baseline sheets with:
+  - `monthlySnapshots` for Platform KPIs and Regional KPIs
+  - `adkVersionShare` for weekly version history
+- Burn-down export merges imported baseline sheets with saved Partner Migration uploads that include raw Sentry rows.
+- Older platform snapshots saved before this feature do not contain the workbook-ready partner rows required to fully rebuild the legacy monthly tabs.
 
 ## Known Gaps Between Spec And Code
 

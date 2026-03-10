@@ -15,6 +15,7 @@ const monthly = [
 ];
 const admin = [
   { to: '/adk-versions',           icon: '⚙️', label: 'ADK Version Manager' },
+  { to: '/legacy-sync',            icon: '📚', label: 'Legacy Workbook Sync' },
   { to: '/history',                icon: '🗂️', label: 'Historical Data' },
 ];
 
