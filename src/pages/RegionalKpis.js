@@ -1,8 +1,8 @@
 import React, { useState } from 'react';
 import { Cell, Legend, Pie, PieChart, ResponsiveContainer, Tooltip } from 'recharts';
-import { addDoc, collection, serverTimestamp } from 'firebase/firestore';
+import AutoSaveStatus from '../components/AutoSaveStatus';
 import UploadZone from '../components/UploadZone';
-import { db } from '../firebase';
+import useAutoImport from '../hooks/useAutoImport';
 import { compactNumber, formatChange, formatDateLabel, getChangeClass, getFieldValue, normalizeDateValue, parseNumber, toPercentChange } from '../utils/reporting';
 
 const REGIONS = ['DOMESTIC', 'EMEA', 'LATAM', 'APAC'];
@@ -41,9 +41,9 @@ function buildRegionSummary(rowsByRegion) {
 
 export default function RegionalKpis() {
   const [uploads, setUploads] = useState({});
-  const [saving, setSaving] = useState(false);
-  const [saved, setSaved] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [uploadSources, setUploadSources] = useState({});
+  const [importGeneration, setImportGeneration] = useState(0);
 
   const rowsByRegion = REGIONS.reduce((acc, region) => {
     acc[region] = parseRegionRows(uploads[region] || [], region);
@@ -77,10 +77,40 @@ export default function RegionalKpis() {
     value: row.current.mau || 0,
     pct: currentTotals.mau ? `${(((row.current.mau || 0) / currentTotals.mau) * 100).toFixed(1)}%` : '0%',
   }));
+  const month = summaryRows[0]?.month || new Date().toISOString().slice(0, 7);
+  const sourceFiles = Object.values(uploadSources).filter(Boolean);
+  const autoSaveRequest = allLoaded && importGeneration
+    ? {
+        type: 'regionalKpis',
+        label: 'Regional KPIs',
+        collectionName: 'monthlySnapshots',
+        data: {
+          type: 'regionalKpis',
+          month,
+          rowCounts: REGIONS.reduce((counts, region) => {
+            counts[region] = uploads[region]?.length || 0;
+            return counts;
+          }, {}),
+          seriesByRegion: rowsByRegion,
+          summaryRows,
+        },
+        fingerprintData: {
+          seriesByRegion: rowsByRegion,
+          summaryRows,
+        },
+        sourceFiles,
+        summary: {
+          month,
+          regionCount: summaryRows.length,
+        },
+      }
+    : null;
+  const autoSave = useAutoImport(autoSaveRequest, autoSaveRequest ? `regional-kpis-${importGeneration}` : null);
 
-  const setRegionUpload = (region) => (rows) => {
-    setSaved(false);
+  const setRegionUpload = (region) => (rows, fields, sourceFileName) => {
     setUploads((prev) => ({ ...prev, [region]: rows }));
+    setUploadSources((prev) => ({ ...prev, [region]: sourceFileName || prev[region] }));
+    setImportGeneration((current) => current + 1);
   };
 
   const generateConfluence = () => {
@@ -99,28 +129,6 @@ TOTAL: MAU ${compactNumber(currentTotals.mau, 2)} (${formatChange(totalChanges.m
     navigator.clipboard.writeText(generateConfluence());
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
-  };
-
-  const save = async () => {
-    if (!allLoaded) return;
-    setSaving(true);
-    try {
-      await addDoc(collection(db, 'monthlySnapshots'), {
-        type: 'regionalKpis',
-        month: summaryRows[0]?.month || new Date().toISOString().slice(0, 7),
-        rowCounts: REGIONS.reduce((counts, region) => {
-          counts[region] = uploads[region]?.length || 0;
-          return counts;
-        }, {}),
-        seriesByRegion: rowsByRegion,
-        summaryRows,
-        uploadedAt: serverTimestamp(),
-      });
-      setSaved(true);
-    } catch (e) {
-      console.error(e);
-    }
-    setSaving(false);
   };
 
   return (
@@ -166,6 +174,17 @@ TOTAL: MAU ${compactNumber(currentTotals.mau, 2)} (${formatChange(totalChanges.m
           <div className="alert alert-info">
             {allLoaded ? '✅ All 4 regions loaded. Regional KPIs are ready for Confluence.' : `ℹ️ ${loaded.length}/4 regions loaded: ${loaded.join(', ')}`}
           </div>
+
+          {allLoaded && (
+            <AutoSaveStatus
+              label="Regional KPIs"
+              status={autoSave.status}
+              error={autoSave.error}
+              importedAtMs={autoSave.importedAtMs}
+              rollbackUntilMs={autoSave.rollbackUntilMs}
+              onRollback={autoSave.rollback}
+            />
+          )}
 
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20 }}>
             <div className="card">
@@ -228,9 +247,6 @@ TOTAL: MAU ${compactNumber(currentTotals.mau, 2)} (${formatChange(totalChanges.m
               <div className="output-preview">{generateConfluence()}</div>
               <div className="output-actions">
                 <button className="btn btn-primary" onClick={copy}>{copied ? '✅ Copied!' : '📋 Copy to Clipboard'}</button>
-                <button className="btn btn-secondary" onClick={save} disabled={saving || saved}>
-                  {saved ? '✅ Saved' : saving ? <><span className="spinner" /> Saving…</> : '💾 Save to History'}
-                </button>
               </div>
             </div>
           )}

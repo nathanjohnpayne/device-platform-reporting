@@ -1,8 +1,8 @@
 import React, { useState } from 'react';
 import { CartesianGrid, Legend, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
-import { addDoc, collection, serverTimestamp } from 'firebase/firestore';
+import AutoSaveStatus from '../components/AutoSaveStatus';
 import UploadZone from '../components/UploadZone';
-import { db } from '../firebase';
+import useAutoImport from '../hooks/useAutoImport';
 import { buildLegacyPlatformSnapshot } from '../utils/legacyWorkbooks';
 import { buildMonthlyDataset, buildSummaryRows, buildTrendData, parseLookerMetricRows, parseLookerZip } from '../utils/looker';
 import { compactNumber, formatChange, getChangeClass, parseNumber } from '../utils/reporting';
@@ -24,9 +24,9 @@ function formatHpv(value) {
 export default function PlatformKpis() {
   const [uploads, setUploads] = useState({ mau: null, mad: null, hrs: null });
   const [chartMetric, setChartMetric] = useState('mau');
-  const [saving, setSaving] = useState(false);
-  const [saved, setSaved] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [uploadSources, setUploadSources] = useState({});
+  const [importGeneration, setImportGeneration] = useState(0);
 
   const metricRows = {
     mau: parseLookerMetricRows(uploads.mau || [], 'mau', 'platform'),
@@ -39,10 +39,42 @@ export default function PlatformKpis() {
   const trendData = buildTrendData(seriesByPlatform, chartMetric);
   const legacyPlatformSnapshot = buildLegacyPlatformSnapshot(uploads);
   const ready = Boolean(uploads.mau && uploads.mad && uploads.hrs && summaryRows.length);
+  const month = summaryRows[0]?.month || new Date().toISOString().slice(0, 7);
+  const sourceFiles = Object.values(uploadSources).filter(Boolean);
+  const autoSaveRequest = ready && importGeneration
+    ? {
+        type: 'platformKpis',
+        label: 'Platform KPIs',
+        collectionName: 'monthlySnapshots',
+        data: {
+          type: 'platformKpis',
+          month,
+          rowCounts: {
+            mau: uploads.mau?.length || 0,
+            mad: uploads.mad?.length || 0,
+            hrs: uploads.hrs?.length || 0,
+          },
+          seriesByPlatform,
+          summaryRows,
+          legacyWorkbook: legacyPlatformSnapshot ? { platform: legacyPlatformSnapshot } : null,
+        },
+        fingerprintData: {
+          seriesByPlatform,
+          summaryRows,
+        },
+        sourceFiles,
+        summary: {
+          month,
+          rowCount: sourceFiles.length,
+        },
+      }
+    : null;
+  const autoSave = useAutoImport(autoSaveRequest, autoSaveRequest ? `platform-kpis-${importGeneration}` : null);
 
-  const setMetricUpload = (metricType) => (rows) => {
-    setSaved(false);
+  const setMetricUpload = (metricType) => (rows, fields, sourceFileName) => {
     setUploads((prev) => ({ ...prev, [metricType]: rows }));
+    setUploadSources((prev) => ({ ...prev, [metricType]: sourceFileName || prev[metricType] }));
+    setImportGeneration((current) => current + 1);
   };
 
   const handleZipUpload = async (file) => {
@@ -57,8 +89,14 @@ export default function PlatformKpis() {
       throw new Error('Zip did not include recognizable active accounts, active devices, and playback hours CSVs.');
     }
 
-    setSaved(false);
     setUploads((prev) => ({ ...prev, ...nextUploads }));
+    setUploadSources(
+      files.reduce((acc, entry) => {
+        if (entry.metricType) acc[entry.metricType] = entry.name;
+        return acc;
+      }, {})
+    );
+    setImportGeneration((current) => current + 1);
     return {
       status: 'ok',
       message: `Loaded ${files.length} CSVs from ${file.name}`,
@@ -72,30 +110,6 @@ export default function PlatformKpis() {
       `${row.entity}: MAU ${compactNumber(row.current.mau, 2)} (${formatChange(row.mauMoM)}) | MAD ${compactNumber(row.current.mad, 2)} (${formatChange(row.madMoM)}) | Playback Hrs ${compactNumber(row.current.hrs, 2)} (${formatChange(row.hrsMoM)}) | HPV ${formatHpv(row.current.hpv)} (${formatChange(row.hpvMoM)})`
     )).join('\n');
     return `<h3>Business KPIs / Program KPIs (D+) — ${currentMonth}</h3>\n${rows}`;
-  };
-
-  const save = async () => {
-    if (!ready) return;
-    setSaving(true);
-    try {
-      await addDoc(collection(db, 'monthlySnapshots'), {
-        type: 'platformKpis',
-        month: summaryRows[0]?.month || new Date().toISOString().slice(0, 7),
-        rowCounts: {
-          mau: uploads.mau?.length || 0,
-          mad: uploads.mad?.length || 0,
-          hrs: uploads.hrs?.length || 0,
-        },
-        seriesByPlatform,
-        summaryRows,
-        legacyWorkbook: legacyPlatformSnapshot ? { platform: legacyPlatformSnapshot } : null,
-        uploadedAt: serverTimestamp(),
-      });
-      setSaved(true);
-    } catch (e) {
-      console.error(e);
-    }
-    setSaving(false);
   };
 
   const copy = () => {
@@ -158,6 +172,15 @@ export default function PlatformKpis() {
           <div className="alert alert-success">
             ✅ Platform KPIs loaded for {summaryRows[0]?.month}. MAU, MAD, Playback Hours, and HPV are merged across the three Looker exports.
           </div>
+
+          <AutoSaveStatus
+            label="Platform KPIs"
+            status={autoSave.status}
+            error={autoSave.error}
+            importedAtMs={autoSave.importedAtMs}
+            rollbackUntilMs={autoSave.rollbackUntilMs}
+            onRollback={autoSave.rollback}
+          />
 
           <div className="card">
             <div className="flex-between" style={{ marginBottom: 16 }}>
@@ -232,9 +255,6 @@ export default function PlatformKpis() {
             <div className="output-preview">{generateConfluence()}</div>
             <div className="output-actions">
               <button className="btn btn-primary" onClick={copy}>{copied ? '✅ Copied!' : '📋 Copy to Clipboard'}</button>
-              <button className="btn btn-secondary" onClick={save} disabled={saving || saved || !ready}>
-                {saved ? '✅ Saved' : saving ? <><span className="spinner" /> Saving…</> : '💾 Save to History'}
-              </button>
             </div>
           </div>
         </>

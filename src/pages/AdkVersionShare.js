@@ -1,8 +1,10 @@
 import React, { useEffect, useState } from 'react';
 import { CartesianGrid, Cell, Legend, Line, LineChart, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
-import { addDoc, collection, getDocs, limit, orderBy, query, serverTimestamp } from 'firebase/firestore';
+import { collection, getDocs, limit, orderBy, query } from 'firebase/firestore';
+import AutoSaveStatus from '../components/AutoSaveStatus';
 import UploadZone from '../components/UploadZone';
 import { db } from '../firebase';
+import useAutoImport from '../hooks/useAutoImport';
 import { buildAdkVersionMap, resolveAdkVersionLabel } from '../utils/adk';
 import {
   compactNumber,
@@ -72,50 +74,68 @@ export default function AdkVersionShare() {
   const [data, setData] = useState(null);
   const [adkMap, setAdkMap] = useState({});
   const [history, setHistory] = useState([]);
-  const [saving, setSaving] = useState(false);
-  const [saved, setSaved] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [mappingsLoaded, setMappingsLoaded] = useState(false);
+  const [importGeneration, setImportGeneration] = useState(0);
+  const [sourceFiles, setSourceFiles] = useState([]);
+
+  const loadHistory = () => (
+    getDocs(query(collection(db, 'adkVersionShare'), orderBy('weekOf', 'desc'), limit(52)))
+      .then((snap) => {
+        setHistory(snap.docs.map((docSnap) => ({ id: docSnap.id, ...docSnap.data() })).reverse());
+      })
+      .catch(console.error)
+  );
 
   useEffect(() => {
     getDocs(collection(db, 'adkVersions'))
       .then((snap) => {
         setAdkMap(buildAdkVersionMap(snap.docs.map((docSnap) => docSnap.data())));
+        setMappingsLoaded(true);
       })
-      .catch(console.error);
+      .catch((error) => {
+        setMappingsLoaded(true);
+        console.error(error);
+      });
 
-    getDocs(query(collection(db, 'adkVersionShare'), orderBy('weekOf', 'desc'), limit(52)))
-      .then((snap) => {
-        setHistory(snap.docs.map((docSnap) => ({ id: docSnap.id, ...docSnap.data() })).reverse());
-      })
-      .catch(console.error);
+    loadHistory();
   }, []);
 
   const analysis = buildVersionShare(data, adkMap);
+  const weekOf = new Date().toISOString().slice(0, 10);
+  const autoSaveRequest = analysis.pieData.length && mappingsLoaded && importGeneration
+    ? {
+        type: 'adkVersionShare',
+        label: 'ADK Version Share',
+        collectionName: 'adkVersionShare',
+        data: {
+          weekOf,
+          latestLabel: analysis.latestLabel,
+          shares: analysis.pieData,
+          trendData: analysis.trendData,
+        },
+        fingerprintData: {
+          latestLabel: analysis.latestLabel,
+          shares: analysis.pieData,
+          trendData: analysis.trendData,
+        },
+        sourceFiles,
+        summary: {
+          weekOf,
+          rowCount: data?.length || 0,
+          versionCount: analysis.pieData.length,
+        },
+      }
+    : null;
+  const autoSave = useAutoImport(autoSaveRequest, autoSaveRequest ? `adk-version-share-${importGeneration}` : null, {
+    onSaved: loadHistory,
+    onRolledBack: loadHistory,
+  });
 
-  const onParsed = (rows) => {
-    setSaved(false);
+  const onParsed = (rows, sourceFileName = '') => {
     setData(rows);
-  };
-
-  const saveToFirestore = async () => {
-    if (!analysis.pieData.length) return;
-    setSaving(true);
-    try {
-      const weekOf = new Date().toISOString().slice(0, 10);
-      const entry = {
-        weekOf,
-        latestLabel: analysis.latestLabel,
-        shares: analysis.pieData,
-        trendData: analysis.trendData,
-        uploadedAt: serverTimestamp(),
-      };
-      await addDoc(collection(db, 'adkVersionShare'), entry);
-      setHistory((prev) => [...prev, entry]);
-      setSaved(true);
-    } catch (e) {
-      console.error(e);
-    }
-    setSaving(false);
+    setSourceFiles(sourceFileName ? [sourceFileName] : []);
+    setImportGeneration((current) => current + 1);
   };
 
   const generateConfluence = () => {
@@ -165,7 +185,7 @@ export default function AdkVersionShare() {
       <div className="card">
         <div className="card-title">Upload Conviva Export</div>
         <div className="card-subtitle">CSV export from "NCP+ADK: ADK Version Comparisons (D+)" — last 30 days</div>
-        <UploadZone label="Drop Conviva ADK Version Share CSV here" onParsed={onParsed} />
+        <UploadZone label="Drop Conviva ADK Version Share CSV here" onParsed={(rows, fields, sourceFileName) => onParsed(rows, sourceFileName)} />
       </div>
 
       {analysis.pieData.length > 0 && (
@@ -173,6 +193,15 @@ export default function AdkVersionShare() {
           <div className="alert alert-success">
             ✅ Version share calculated from {data.length} rows. Latest snapshot: {analysis.latestLabel}.
           </div>
+
+          <AutoSaveStatus
+            label="ADK Version Share"
+            status={autoSave.status}
+            error={autoSave.error}
+            importedAtMs={autoSave.importedAtMs}
+            rollbackUntilMs={autoSave.rollbackUntilMs}
+            onRollback={autoSave.rollback}
+          />
 
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20 }}>
             <div className="card">
@@ -265,9 +294,6 @@ export default function AdkVersionShare() {
             <div className="output-preview">{generateConfluence()}</div>
             <div className="output-actions">
               <button className="btn btn-primary" onClick={copy}>{copied ? '✅ Copied!' : '📋 Copy to Clipboard'}</button>
-              <button className="btn btn-secondary" onClick={saveToFirestore} disabled={saving || saved}>
-                {saved ? '✅ Saved to History' : saving ? <><span className="spinner" /> Saving…</> : '💾 Save to History'}
-              </button>
             </div>
           </div>
         </>

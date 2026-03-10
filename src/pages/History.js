@@ -1,7 +1,9 @@
 // pages/History.js
 import React, { useState, useEffect } from 'react';
-import { db } from '../firebase';
 import { collection, getDocs, query, orderBy, limit } from 'firebase/firestore';
+import RollbackButton from '../components/RollbackButton';
+import { db } from '../firebase';
+import { canRollback, formatImportTimestamp, rollbackImportSnapshot } from '../utils/importHistory';
 
 function HistoryTable({ title, collectionName, columns }) {
   const [rows, setRows]       = useState([]);
@@ -18,10 +20,10 @@ function HistoryTable({ title, collectionName, columns }) {
       <div className="card-title">{title}</div>
       <div className="card-subtitle">{loading ? 'Loading…' : `${rows.length} record${rows.length !== 1 ? 's' : ''} (most recent 50)`}</div>
       {!loading && rows.length === 0 ? (
-        <div className="empty-state" style={{ padding: '24px 0' }}>
+          <div className="empty-state" style={{ padding: '24px 0' }}>
           <div className="empty-state-icon">📭</div>
           <h3>No data yet</h3>
-          <p>Records appear here after you complete a workflow and click "Save to History."</p>
+          <p>Records appear here after you complete a workflow and the import auto-saves.</p>
         </div>
       ) : (
         <div style={{ overflowX: 'auto' }}>
@@ -32,11 +34,11 @@ function HistoryTable({ title, collectionName, columns }) {
               </tr>
             </thead>
             <tbody>
-              {rows.map((r, i) => (
+              {rows.map((r) => (
                 <tr key={r.id}>
                   {columns.map(c => (
                     <td key={c.key}>
-                      {c.render ? c.render(r) : (r[c.key] ?? '—')}
+                      {c.render ? c.render(r, setRows) : (r[c.key] ?? '—')}
                     </td>
                   ))}
                 </tr>
@@ -57,7 +59,7 @@ export default function History() {
       </div>
 
       <div className="alert alert-info">
-        ℹ️ All records saved via the weekly and monthly workflows appear here. Data is stored in Firestore and shared across all authenticated users. Legacy Google Sheets import/export now lives in <a href="/legacy-sync" style={{ fontWeight: 700 }}>Legacy Workbook Sync</a>.
+        ℹ️ All records saved via the weekly and monthly workflows appear here automatically. Rollback is available only for rollback-enabled imports from the last 30 days. Legacy Google Sheets import/export now lives in <a href="/legacy-sync" style={{ fontWeight: 700 }}>Legacy Workbook Sync</a>.
       </div>
 
       <HistoryTable
@@ -68,6 +70,23 @@ export default function History() {
           { key: 'type',      label: 'Type' },
           { key: 'uploadedAt', label: 'Uploaded', render: r => r.uploadedAt?.toDate?.().toLocaleString() || '—' },
           { key: 'rows', label: 'Rows', render: r => r.rows?.length ?? '—' },
+          {
+            key: 'actions',
+            label: 'Actions',
+            render: (row, setRows) => row.importBatchId ? (
+              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 6 }}>
+                <RollbackButton
+                  subject="the playback snapshot"
+                  rollbackUntilMs={row.rollbackUntilMs}
+                  onConfirm={() => rollbackImportSnapshot(row.importBatchId)}
+                  onRolledBack={() => setRows((prev) => prev.filter((entry) => entry.id !== row.id))}
+                />
+                <span className="text-muted">
+                  {canRollback(row.rollbackUntilMs) ? `Until ${formatImportTimestamp(row.rollbackUntilMs)}` : '30-day window expired'}
+                </span>
+              </div>
+            ) : <span className="text-muted">Legacy save</span>,
+          },
         ]}
       />
 
@@ -78,6 +97,23 @@ export default function History() {
           { key: 'weekOf', label: 'Week Of' },
           { key: 'shares', label: 'Versions', render: r => (r.shares || []).map(s => `${s.name}: ${s.pct}`).join(' · ') || '—' },
           { key: 'uploadedAt', label: 'Uploaded', render: r => r.uploadedAt?.toDate?.().toLocaleString() || '—' },
+          {
+            key: 'actions',
+            label: 'Actions',
+            render: (row, setRows) => row.importBatchId ? (
+              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 6 }}>
+                <RollbackButton
+                  subject="the ADK version share import"
+                  rollbackUntilMs={row.rollbackUntilMs}
+                  onConfirm={() => rollbackImportSnapshot(row.importBatchId)}
+                  onRolledBack={() => setRows((prev) => prev.filter((entry) => entry.id !== row.id))}
+                />
+                <span className="text-muted">
+                  {canRollback(row.rollbackUntilMs) ? `Until ${formatImportTimestamp(row.rollbackUntilMs)}` : '30-day window expired'}
+                </span>
+              </div>
+            ) : <span className="text-muted">Legacy save</span>,
+          },
         ]}
       />
 
@@ -89,6 +125,23 @@ export default function History() {
           { key: 'partners', label: 'Partners', render: r => `${r.partners?.length ?? 0} partners tracked` },
           { key: 'partners', label: 'Not Migrated', render: r => `${r.partners?.filter(p => parseFloat(p.legacyPct) > 0).length ?? 0} with legacy ADK` },
           { key: 'uploadedAt', label: 'Uploaded', render: r => r.uploadedAt?.toDate?.().toLocaleString() || '—' },
+          {
+            key: 'actions',
+            label: 'Actions',
+            render: (row, setRows) => row.importBatchId ? (
+              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 6 }}>
+                <RollbackButton
+                  subject="the partner migration import"
+                  rollbackUntilMs={row.rollbackUntilMs}
+                  onConfirm={() => rollbackImportSnapshot(row.importBatchId)}
+                  onRolledBack={() => setRows((prev) => prev.filter((entry) => entry.id !== row.id))}
+                />
+                <span className="text-muted">
+                  {canRollback(row.rollbackUntilMs) ? `Until ${formatImportTimestamp(row.rollbackUntilMs)}` : '30-day window expired'}
+                </span>
+              </div>
+            ) : <span className="text-muted">Legacy save</span>,
+          },
         ]}
       />
 
@@ -99,6 +152,23 @@ export default function History() {
           { key: 'month', label: 'Month' },
           { key: 'type',  label: 'Type', render: r => r.type === 'platformKpis' ? 'Platform KPIs' : 'Regional KPIs' },
           { key: 'uploadedAt', label: 'Uploaded', render: r => r.uploadedAt?.toDate?.().toLocaleString() || '—' },
+          {
+            key: 'actions',
+            label: 'Actions',
+            render: (row, setRows) => row.importBatchId ? (
+              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 6 }}>
+                <RollbackButton
+                  subject={`the ${row.type === 'platformKpis' ? 'platform KPI' : 'regional KPI'} import`}
+                  rollbackUntilMs={row.rollbackUntilMs}
+                  onConfirm={() => rollbackImportSnapshot(row.importBatchId)}
+                  onRolledBack={() => setRows((prev) => prev.filter((entry) => entry.id !== row.id))}
+                />
+                <span className="text-muted">
+                  {canRollback(row.rollbackUntilMs) ? `Until ${formatImportTimestamp(row.rollbackUntilMs)}` : '30-day window expired'}
+                </span>
+              </div>
+            ) : <span className="text-muted">Legacy save</span>,
+          },
         ]}
       />
     </div>

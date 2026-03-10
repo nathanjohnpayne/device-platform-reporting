@@ -1,7 +1,9 @@
 import React, { useEffect, useState } from 'react';
-import { addDoc, collection, getDocs, serverTimestamp } from 'firebase/firestore';
+import { collection, getDocs } from 'firebase/firestore';
+import AutoSaveStatus from '../components/AutoSaveStatus';
 import UploadZone from '../components/UploadZone';
 import { db } from '../firebase';
+import useAutoImport from '../hooks/useAutoImport';
 import { buildAdkVersionMap, resolveAdkVersionLabel } from '../utils/adk';
 import { getFieldValue, parseNumber } from '../utils/reporting';
 
@@ -51,9 +53,13 @@ export default function PartnerMigration() {
   const [uploadMeta, setUploadMeta] = useState({ rawHeaders: [], sourceFileName: '' });
   const [adkMap, setAdkMap] = useState({});
   const [currentGa, setCurrentGa] = useState('Unknown');
-  const [saving, setSaving] = useState(false);
-  const [saved, setSaved] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [versionsLoaded, setVersionsLoaded] = useState(false);
+  const [importGeneration, setImportGeneration] = useState(0);
+  const [importConfig, setImportConfig] = useState({
+    minDevices: 100,
+    legacyAlertPct: 0,
+  });
   const [config, setConfig] = useState({
     minDevices: 100,
     legacyAlertPct: 0,
@@ -65,21 +71,56 @@ export default function PartnerMigration() {
         const versions = snap.docs.map((docSnap) => docSnap.data());
         setAdkMap(buildAdkVersionMap(versions));
         setCurrentGa(deriveCurrentGa(versions));
+        setVersionsLoaded(true);
       })
-      .catch(console.error);
+      .catch((error) => {
+        setVersionsLoaded(true);
+        console.error(error);
+      });
   }, []);
 
   const partners = buildPartnerSummary(data, adkMap, currentGa, config.minDevices);
+  const savedPartners = buildPartnerSummary(data, adkMap, currentGa, importConfig.minDevices);
   const legacyPartners = partners.filter((partner) => partner.legacyPct > config.legacyAlertPct);
   const allVersions = [...new Set(partners.flatMap((partner) => Object.keys(partner.versions)))];
+  const weekOf = new Date().toISOString().slice(0, 10);
+  const autoSaveRequest = data?.length && versionsLoaded && importGeneration
+    ? {
+        type: 'partnerMigration',
+        label: 'Partner Migration',
+        collectionName: 'partnerMigration',
+        data: {
+          weekOf,
+          currentGa,
+          thresholds: importConfig,
+          partners: savedPartners,
+          rawHeaders: uploadMeta.rawHeaders,
+          rawRows: data,
+          sourceFileName: uploadMeta.sourceFileName,
+        },
+        fingerprintData: {
+          currentGa,
+          adkMap,
+          rawRows: data,
+        },
+        sourceFiles: uploadMeta.sourceFileName ? [uploadMeta.sourceFileName] : [],
+        summary: {
+          weekOf,
+          rowCount: data.length,
+          partnerCount: savedPartners.length,
+        },
+      }
+    : null;
+  const autoSave = useAutoImport(autoSaveRequest, autoSaveRequest ? `partner-migration-${importGeneration}` : null);
 
   const onParsed = (rows, fields, sourceFileName) => {
-    setSaved(false);
     setData(rows);
     setUploadMeta({
       rawHeaders: fields || [],
       sourceFileName: sourceFileName || '',
     });
+    setImportConfig({ ...config });
+    setImportGeneration((current) => current + 1);
   };
 
   const generateNotes = () => {
@@ -94,27 +135,6 @@ export default function PartnerMigration() {
     navigator.clipboard.writeText(generateNotes());
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
-  };
-
-  const save = async () => {
-    if (!partners.length) return;
-    setSaving(true);
-    try {
-      await addDoc(collection(db, 'partnerMigration'), {
-        weekOf: new Date().toISOString().slice(0, 10),
-        currentGa,
-        thresholds: config,
-        partners,
-        rawHeaders: uploadMeta.rawHeaders,
-        rawRows: data,
-        sourceFileName: uploadMeta.sourceFileName,
-        uploadedAt: serverTimestamp(),
-      });
-      setSaved(true);
-    } catch (e) {
-      console.error(e);
-    }
-    setSaving(false);
   };
 
   return (
@@ -171,6 +191,17 @@ export default function PartnerMigration() {
           onParsed={onParsed}
         />
       </div>
+
+      {data?.length > 0 && (
+        <AutoSaveStatus
+          label="Partner Migration"
+          status={autoSave.status}
+          error={autoSave.error}
+          importedAtMs={autoSave.importedAtMs}
+          rollbackUntilMs={autoSave.rollbackUntilMs}
+          onRollback={autoSave.rollback}
+        />
+      )}
 
       {partners.length > 0 && (
         <>
@@ -235,9 +266,6 @@ export default function PartnerMigration() {
             <div className="output-preview">{generateNotes()}</div>
             <div className="output-actions">
               <button className="btn btn-primary" onClick={copy}>{copied ? '✅ Copied!' : '📋 Copy Notes'}</button>
-              <button className="btn btn-secondary" onClick={save} disabled={saving || saved}>
-                {saved ? '✅ Saved' : saving ? <><span className="spinner" /> Saving…</> : '💾 Save to History'}
-              </button>
             </div>
           </div>
         </>
