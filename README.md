@@ -150,6 +150,7 @@ Use **Legacy Workbook Sync** in the sidebar when you need to keep the historical
 
 Notes:
 - Imported workbook sheets are stored in Firestore as the historical baseline.
+- Import only trusted internal workbook exports. The app reads each spreadsheet locally in the browser and stores sheet contents in Firestore as the export baseline.
 - New **Partner Migration** saves now retain the raw Sentry rows needed to recreate Discover tabs in the burn-down workbook.
 - New **Platform KPIs** saves now retain the partner-level workbook row data needed to rebuild the legacy monthly tabs.
 - Older platform snapshots saved before this feature do not contain that partner-level workbook payload, so import the legacy workbook first if you need complete monthly history.

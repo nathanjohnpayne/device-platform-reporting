@@ -77,6 +77,36 @@ const PLATFORM_SUMMARY_HEADERS = {
 };
 
 const REGIONS = ['APAC', 'DOMESTIC', 'EMEA', 'LATAM'];
+const MAX_WORKBOOK_SIZE_BYTES = 50 * 1024 * 1024;
+const REGIONAL_HEADER_LABELS = {
+  totals: {
+    mau: 'Active Accounts: Total',
+    mad: 'Active Devices: Total',
+    hrs: 'Playback Hours: Total',
+  },
+  regions: {
+    APAC: {
+      mau: 'Active Accounts: APAC',
+      mad: 'Active Devices: APAC',
+      hrs: 'Playback Hours: APAC',
+    },
+    DOMESTIC: {
+      mau: 'Active Accounts: Domestic',
+      mad: 'Active Devices: Domestic',
+      hrs: 'Playback Hours: Domestic',
+    },
+    EMEA: {
+      mau: 'Active Accounts: EMEA',
+      mad: 'Active Devices: EMEA',
+      hrs: 'Playback Hours: EMEA',
+    },
+    LATAM: {
+      mau: 'Active Accounts: LATAM',
+      mad: 'Active Devices: LATAM',
+      hrs: 'Playback Hours: LATAM',
+    },
+  },
+};
 
 function trimTrailingEmptyCells(row = []) {
   const next = [...row];
@@ -98,7 +128,17 @@ export function isProgramWorkbookSheetSet(sheetNames = []) {
   return PROGRAM_WORKBOOK_SHEETS.every((name) => sheetNames.includes(name));
 }
 
+export function isBurnDownWorkbookSheetSet(sheets = []) {
+  return (sheets || []).some((sheet) => (
+    (sheet.rows || []).some((row = []) => row.some((value) => String(value || '').trim() !== ''))
+  ));
+}
+
 export async function readWorkbookFile(file) {
+  if (file.size > MAX_WORKBOOK_SIZE_BYTES) {
+    throw new Error('Workbook is larger than 50MB. Export a smaller file before importing it into the app.');
+  }
+
   const workbook = XLSX.read(await file.arrayBuffer(), {
     type: 'array',
     cellDates: true,
@@ -123,7 +163,7 @@ export async function readWorkbookFile(file) {
 export function rowsToCsvText(rows = []) {
   return Papa.unparse(rows, {
     header: false,
-    quotes: false,
+    quotes: true,
     skipEmptyLines: false,
   });
 }
@@ -288,6 +328,9 @@ function parseImportedPlaybackHoursData(rows = [], partnerHeaders = []) {
 }
 
 function parseImportedRegionalRows(rows = []) {
+  const headerRow = rows[0] || [];
+  const indexFor = (label) => headerRow.findIndex((value) => value === label);
+
   return (rows || [])
     .slice(1)
     .map((row) => {
@@ -295,16 +338,32 @@ function parseImportedRegionalRows(rows = []) {
       if (!month) return null;
 
       const totals = {
-        mau: parseNumber(row[1]),
-        mad: parseNumber(row[3]),
-        hrs: parseNumber(row[5]),
+        mau: parseNumber(row[indexFor(REGIONAL_HEADER_LABELS.totals.mau)]),
+        mad: parseNumber(row[indexFor(REGIONAL_HEADER_LABELS.totals.mad)]),
+        hrs: parseNumber(row[indexFor(REGIONAL_HEADER_LABELS.totals.hrs)]),
       };
 
       const regions = {
-        APAC: { mau: parseNumber(row[7]), mad: parseNumber(row[10]), hrs: parseNumber(row[13]) },
-        DOMESTIC: { mau: parseNumber(row[16]), mad: parseNumber(row[19]), hrs: parseNumber(row[22]) },
-        EMEA: { mau: parseNumber(row[25]), mad: parseNumber(row[28]), hrs: parseNumber(row[31]) },
-        LATAM: { mau: parseNumber(row[34]), mad: parseNumber(row[37]), hrs: parseNumber(row[40]) },
+        APAC: {
+          mau: parseNumber(row[indexFor(REGIONAL_HEADER_LABELS.regions.APAC.mau)]),
+          mad: parseNumber(row[indexFor(REGIONAL_HEADER_LABELS.regions.APAC.mad)]),
+          hrs: parseNumber(row[indexFor(REGIONAL_HEADER_LABELS.regions.APAC.hrs)]),
+        },
+        DOMESTIC: {
+          mau: parseNumber(row[indexFor(REGIONAL_HEADER_LABELS.regions.DOMESTIC.mau)]),
+          mad: parseNumber(row[indexFor(REGIONAL_HEADER_LABELS.regions.DOMESTIC.mad)]),
+          hrs: parseNumber(row[indexFor(REGIONAL_HEADER_LABELS.regions.DOMESTIC.hrs)]),
+        },
+        EMEA: {
+          mau: parseNumber(row[indexFor(REGIONAL_HEADER_LABELS.regions.EMEA.mau)]),
+          mad: parseNumber(row[indexFor(REGIONAL_HEADER_LABELS.regions.EMEA.mad)]),
+          hrs: parseNumber(row[indexFor(REGIONAL_HEADER_LABELS.regions.EMEA.hrs)]),
+        },
+        LATAM: {
+          mau: parseNumber(row[indexFor(REGIONAL_HEADER_LABELS.regions.LATAM.mau)]),
+          mad: parseNumber(row[indexFor(REGIONAL_HEADER_LABELS.regions.LATAM.mad)]),
+          hrs: parseNumber(row[indexFor(REGIONAL_HEADER_LABELS.regions.LATAM.hrs)]),
+        },
       };
 
       if (totals.mau == null && totals.mad == null && totals.hrs == null) return null;
@@ -442,11 +501,13 @@ function buildHoursPerActiveRows(activeUserEntries = [], playbackEntries = []) {
     const priorActiveTotals = priorActiveUsers ? derivePlatformTotals(priorActiveUsers.values) : null;
     const priorPlaybackTotals = priorPlayback ? derivePlatformTotals(priorPlayback.values) : null;
     const priorHpa = priorActiveTotals && priorPlaybackTotals ? {
+      total: safeDivide(priorPlaybackTotals.total, priorActiveTotals.total),
       ps: safeDivide(priorPlaybackTotals.ps, priorActiveTotals.ps),
       xbox: safeDivide(priorPlaybackTotals.xbox, priorActiveTotals.xbox),
       adk: safeDivide(priorPlaybackTotals.adk, priorActiveTotals.adk),
     } : null;
 
+    // The legacy sheet only has MoM columns for PS, Xbox, and ADK. Total HPA is displayed without a paired MoM column.
     return [
       month,
       formatInteger(playbackTotals.total),
@@ -675,7 +736,7 @@ function buildProgramWorkbookSheets(importedProgramSheets = {}, monthlySnapshots
     const derivedKeys = [...new Set(
       [...activeUsers, ...activeDevices, ...playbackHours]
         .flatMap((entry) => Object.keys(entry.values || {}))
-    )];
+    )].sort((left, right) => humanizePartnerLabel(left).localeCompare(humanizePartnerLabel(right)));
     partnerHeaders = derivedKeys.map((key) => ({
       key,
       label: humanizePartnerLabel(key),
@@ -723,26 +784,6 @@ function buildPartnerSheetRows(snapshot = {}, adkMap = {}) {
   });
 
   if (!hasAdkVersion && !headers.includes('ADK Version')) headers.splice(2, 0, 'ADK Version');
-
-  const dataRows = rawRows.map((row) => {
-    const cells = [];
-    rawHeaders.forEach((header) => {
-      const value = row[header];
-      const normalized = normalizeFieldName(header);
-      cells.push(value ?? '');
-      if (!hasAdkVersion && normalized === (hasRegion ? 'region' : 'device')) {
-        cells.push(resolveAdkVersionLabel(row.core_version || row['core_version'], adkMap));
-      }
-    });
-
-    if (hasAdkVersion) return cells;
-
-    if (!cells.length) return cells;
-    if (!headers.includes('ADK Version')) return cells;
-    return cells;
-  });
-
-  if (hasAdkVersion) return [headers, ...dataRows];
 
   return [
     headers,

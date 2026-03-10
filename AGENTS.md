@@ -159,6 +159,7 @@ Current collection usage in code:
   - Program Weekly KPIs
   - ADK Adoption Burn Down
 - Imported sheets are stored in Firestore as the historical baseline and are not written into the main analytics collections.
+- Import only trusted internal workbook exports. The browser reads the full spreadsheet and the app stores sheet contents in Firestore for later merged exports.
 - Program workbook export merges imported baseline sheets with:
   - `monthlySnapshots` for Platform KPIs and Regional KPIs
   - `adkVersionShare` for weekly version history
