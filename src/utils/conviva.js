@@ -1,5 +1,5 @@
 import Papa from 'papaparse';
-import { classifyMetric, humanizeMetric, parseNumber } from './reporting';
+import { classifyMetric, humanizeMetric, normalizeDateValue, parseNumber } from './reporting';
 
 function parseCsvLine(line) {
   const result = Papa.parse(line, { header: false, skipEmptyLines: false });
@@ -57,9 +57,11 @@ export function parseConvivaPlaybackRows(text) {
     const value = parseNumber(populated[1]);
     if (!metric || value == null) return;
 
-    const key = timestamp;
+    // Conviva mixes daily and 12-hour points in the same export. Bucket by
+    // normalized day so the playback charts stay on a daily cadence.
+    const key = normalizeDateValue(timestamp) || timestamp;
     if (!groupedRows.has(key)) {
-      groupedRows.set(key, { Timestamp: timestamp });
+      groupedRows.set(key, { Timestamp: key });
     }
 
     groupedRows.get(key)[`${humanizeMetric(metric)}: ${filterLabel}`] = value;
