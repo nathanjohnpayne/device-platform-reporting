@@ -1,8 +1,8 @@
 import React, { useState } from 'react';
 import { CartesianGrid, Legend, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
-import { addDoc, collection, serverTimestamp } from 'firebase/firestore';
+import AutoSaveStatus from '../components/AutoSaveStatus';
 import UploadZone from '../components/UploadZone';
-import { db } from '../firebase';
+import useAutoImport from '../hooks/useAutoImport';
 import { parseConvivaPlaybackRows } from '../utils/conviva';
 import {
   classifyMetric,
@@ -147,9 +147,12 @@ function metricFormatter(metric, value) {
 
 export default function PlaybackPerformance() {
   const [data, setData] = useState(null);
-  const [saving, setSaving] = useState(false);
-  const [saved, setSaved] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [importGeneration, setImportGeneration] = useState(0);
+  const [importMeta, setImportMeta] = useState({
+    sourceFiles: [],
+    savedConfig: null,
+  });
   const [config, setConfig] = useState({
     vsfThreshold: 98.5,
     vpfThreshold: 96.5,
@@ -158,10 +161,44 @@ export default function PlaybackPerformance() {
 
   const analysis = buildPlaybackAnalysis(data, config);
   const recognizedMetricCount = Object.values(analysis.metricSeries).reduce((sum, items) => sum + items.length, 0);
+  const savedAnalysis = buildPlaybackAnalysis(data, importMeta.savedConfig || config);
+  const weekOf = new Date().toISOString().slice(0, 10);
 
-  const onParsed = (rows) => {
+  const autoSaveRequest = data && recognizedMetricCount && importGeneration
+    ? {
+        type: 'playbackPerformance',
+        label: 'Playback Performance',
+        collectionName: 'weeklySnapshots',
+        data: {
+          type: 'playbackPerformance',
+          rows: data,
+          analysis: {
+            latestLabel: savedAnalysis.latestLabel,
+            narrative: savedAnalysis.narrative,
+            thresholds: importMeta.savedConfig || config,
+          },
+          weekOf,
+        },
+        fingerprintData: {
+          rows: data,
+        },
+        sourceFiles: importMeta.sourceFiles,
+        summary: {
+          weekOf,
+          rowCount: data.length,
+          metricSeriesCount: recognizedMetricCount,
+        },
+      }
+    : null;
+  const autoSave = useAutoImport(autoSaveRequest, autoSaveRequest ? `playback-${importGeneration}` : null);
+
+  const onParsed = (rows, sourceFileName = '') => {
     setData(rows);
-    setSaved(false);
+    setImportMeta({
+      sourceFiles: sourceFileName ? [sourceFileName] : [],
+      savedConfig: { ...config },
+    });
+    setImportGeneration((current) => current + 1);
   };
 
   const handleConvivaUpload = async (file) => {
@@ -175,34 +212,12 @@ export default function PlaybackPerformance() {
       throw new Error('This Conviva export did not contain readable Playback Performance sections. Upload the dashboard CSV export, not the app-version detail table.');
     }
 
-    onParsed(rows);
+    onParsed(rows, file.name);
 
     return {
       status: 'ok',
       message: `${rows.length.toLocaleString()} time points loaded across ${seriesCount} playback series`,
     };
-  };
-
-  const saveToFirestore = async () => {
-    if (!data || !recognizedMetricCount) return;
-    setSaving(true);
-    try {
-      await addDoc(collection(db, 'weeklySnapshots'), {
-        type: 'playbackPerformance',
-        rows: data,
-        analysis: {
-          latestLabel: analysis.latestLabel,
-          narrative: analysis.narrative,
-          thresholds: config,
-        },
-        uploadedAt: serverTimestamp(),
-        weekOf: new Date().toISOString().slice(0, 10),
-      });
-      setSaved(true);
-    } catch (e) {
-      console.error(e);
-    }
-    setSaving(false);
   };
 
   const generateConfluence = () => {
@@ -293,6 +308,15 @@ ${sections}`;
             ✅ {data.length} rows loaded. The app recognized {recognizedMetricCount} metric series across the four playback sections.
           </div>
 
+          <AutoSaveStatus
+            label="Playback Performance"
+            status={autoSave.status}
+            error={autoSave.error}
+            importedAtMs={autoSave.importedAtMs}
+            rollbackUntilMs={autoSave.rollbackUntilMs}
+            onRollback={autoSave.rollback}
+          />
+
           <div className="card">
             <div className="card-title">📝 Narrative Summary</div>
             <div className="card-subtitle">Templated bullets for the weekly Confluence page.</div>
@@ -357,9 +381,6 @@ ${sections}`;
             <div className="output-preview">{generateConfluence()}</div>
             <div className="output-actions">
               <button className="btn btn-primary" onClick={copy}>{copied ? '✅ Copied!' : '📋 Copy to Clipboard'}</button>
-              <button className="btn btn-secondary" onClick={saveToFirestore} disabled={saving || saved}>
-                {saved ? '✅ Saved to History' : saving ? <><span className="spinner" /> Saving…</> : '💾 Save to History'}
-              </button>
             </div>
           </div>
         </>
