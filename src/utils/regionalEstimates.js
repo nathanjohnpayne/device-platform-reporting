@@ -167,6 +167,13 @@ export function buildRegionalEstimate({
   const index = buildPartnerRegionIndex(mappings);
   const mauSnapshot = parseLatestPartnerMetricSnapshot(activeAccountText);
   const hrsSnapshot = parseLatestPartnerMetricSnapshot(playbackHoursText);
+
+  if (mauSnapshot.month !== hrsSnapshot.month) {
+    throw new Error(
+      `Month mismatch: Active Accounts is ${mauSnapshot.month}, Playback Hours is ${hrsSnapshot.month}. Upload exports from the same month.`
+    );
+  }
+
   const deviceEntries = parseRegionalDeviceDistribution(regionalDeviceDistributionText);
   const averageDailyActiveDevices = parseAverageDailyScalar(averageDailyActiveDevicesText);
 
@@ -178,7 +185,7 @@ export function buildRegionalEstimate({
   );
   const scaledMadTotals = scaleTotals(madAllocation.totals, averageDailyActiveDevices);
 
-  const month = mauSnapshot.month || hrsSnapshot.month;
+  const month = mauSnapshot.month;
   const seriesByRegion = Object.fromEntries(
     ESTIMATE_REGIONS.map((region) => [region, [{
       month,

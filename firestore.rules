@@ -43,12 +43,15 @@ service cloud.firestore {
       allow read, write: if isAllowedUser();
     }
 
+    // This collection is intentionally last-writer-wins because each mapping
+    // import replaces the full active partner mapping set.
     match /partnerRegionMappings/{document} {
       allow read, write: if isAllowedUser();
     }
 
     match /partnerRegionMappingMeta/{document} {
-      allow read, write: if isAllowedUser();
+      allow read: if isAllowedUser();
+      allow write: if isAllowedUser() && document == 'current';
     }
 
     match /weeklySnapshots/{document} {
