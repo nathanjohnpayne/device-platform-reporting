@@ -14,9 +14,9 @@ Replaces 30–45 minutes of manual Monday-morning work with a 5-minute upload-an
 | Playback Performance | Weekly | Conviva CSV | VSF-T, VPF-T, Attempts, Unique Devices charts + narrative |
 | ADK Version Share | Weekly | Conviva CSV | Latest-snapshot pie chart, 30-day trend, % breakdown per ADK version |
 | Partner Migration | Weekly | Sentry CSV | Partner migration table, configurable legacy threshold, notes block |
-| Platform KPIs | Monthly | Looker ZIP / CSV | MAU, MAD, Playback Hours, HPV by platform (PS, Xbox, ADK) with MoM % |
-| Regional KPIs | Monthly | Looker CSV | MAU, MAD, Playback Hours by region with MoM % |
+| Platform & Regional KPIs | Monthly | Looker ZIP / CSV | Platform MAU, MAD, Playback Hours, HPV plus estimated regional MAU, MAD, and Playback Hours |
 | ADK Version Manager | Admin | Firestore | Add/edit ADK version → core_version mappings |
+| Partner Region Mapping | Admin | Google Sheet CSV + Firestore | Import Sheet 1 partner/country/region mapping used by the regional estimation model |
 | Legacy Workbook Sync | Admin | Excel + Firestore | Import historical Google Sheets workbooks and export merged replacement `.xlsx` files |
 
 ---
@@ -133,8 +133,11 @@ Add `localhost` in Firebase Console → Authentication → Settings → Authoriz
 
 **Run at the end of each month**
 
-1. **Platform KPIs** — Download zip from [Looker D+ Device Health Dashboard](https://looker.disneystreaming.com/dashboards/11169?Date+Granularity=monthly&Date+Range=1+month+ago+for+1+month&Device+Family=rust) (Device Family=rust, last complete month) → upload the ZIP directly, or upload the three extracted CSVs manually → review MAU/MAD/Playback Hours/HPV and MoM output. If the Looker export only contains one month, the app compares it against the most recent saved platform snapshot → copy to Confluence.
-2. **Regional KPIs** — Same Looker dashboard, filtered by each region (APAC, DOMESTIC, EMEA, LATAM) → upload one CSV per region → review regional MoM table + MAU share pie chart. If a regional export only contains one month, the app compares it against the most recent saved regional snapshot → copy to Confluence.
+1. **Partner Region Mapping** — Open the shared [Partner Country + Region mapping sheet](https://docs.google.com/spreadsheets/d/1gla_k5-dERGc10XwS1R56E_69FAFreXRjVso_LEuYoU/edit?gid=0#gid=0), update **Sheet 1**, export Sheet 1 as CSV, and upload it in the app whenever the mapping changes. The optional `dashboard_aliases` column is the approved way to map non-1:1 Looker partner labels.
+2. **Platform & Regional KPIs** — Download the zip from [Looker D+ Device Health Dashboard](https://looker.disneystreaming.com/dashboards/11169?Date+Granularity=monthly&Date+Range=1+month+ago+for+1+month&Device+Family=rust) (Device Family=rust, last complete month) and upload it directly. The page still supports manual upload of `active_accounts.csv`, `active_devices.csv`, and `playback_hours.csv` as a platform-only fallback.
+3. The combined monthly page saves the platform KPI snapshot to `monthlySnapshots` and, when the zip also includes `active_accounts_(data).csv`/`active_accounts.csv`, `playback_hours_(data).csv`/`playback_hours.csv`, `regional_device_distribution.csv`, and `average_daily_active_devices.csv`, it also derives estimated regional MAU, MAD, and Playback Hours from the same import.
+4. Regional output is an **estimation model, not a ground-truth geographic attribution model**. Directly region-coded partners stay assigned to those regions. Global or unmapped partners are redistributed proportionally from the observed mix of directly mapped partners, which can bias results if the unmapped/global partner base has a different regional footprint.
+5. If the Looker export only contains one month, the page compares the current month against the most recent saved platform snapshot and the most recent saved regional estimate history available in Firestore.
 
 ---
 
@@ -153,7 +156,7 @@ Notes:
 - Workflow auto-saves dedupe by dataset content, not filename, so re-exporting the same source data under a new filename is still treated as already imported.
 - Import only trusted internal workbook exports. The app reads each spreadsheet locally in the browser and stores sheet contents in Firestore as the export baseline.
 - New **Partner Migration** saves now retain the raw Sentry rows needed to recreate Discover tabs in the burn-down workbook.
-- New **Platform KPIs** saves now retain the partner-level workbook row data needed to rebuild the legacy monthly tabs.
+- New **Platform & Regional KPI** saves retain the partner-level workbook row data needed to rebuild the legacy monthly tabs, and newer saves embed the regional estimation payload used to rebuild the legacy regional tab.
 - Older platform snapshots saved before this feature do not contain that partner-level workbook payload, so import the legacy workbook first if you need complete monthly history.
 
 ---
@@ -162,10 +165,12 @@ Notes:
 
 ```
 adkVersions/          — ADK version reference table (editable in app)
+partnerRegionMappings/ — Imported Sheet 1 partner/country/region mapping rows keyed by normalized partner identity
+partnerRegionMappingMeta/ — Metadata for the currently active mapping import
 weeklySnapshots/      — Playback Performance uploads + generated narrative snapshot
 adkVersionShare/      — Weekly ADK version share history and saved trend data
 partnerMigration/     — Weekly partner migration snapshots + thresholds used
-monthlySnapshots/     — Computed platform/regional monthly series, summary rows, row counts
+monthlySnapshots/     — Computed monthly platform KPI series plus embedded regional estimate payloads for newer combined saves
 importBatches/        — Auto-save batch metadata used for duplicate detection and rollback
 legacyWorkbookImports/ — Workbook import manifests (latest imported source file + sheet list)
 legacyWorkbookImportBatches/ — Versioned legacy workbook import metadata used for rollback

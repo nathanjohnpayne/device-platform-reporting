@@ -444,7 +444,7 @@ export default function LegacyWorkbookSync() {
           </button>
         </div>
         <div style={{ marginTop: 14, fontSize: 12, color: '#475569', lineHeight: 1.6 }}>
-          <div><strong>Program workbook:</strong> merges imported workbook tabs with saved Platform KPIs, Regional KPIs, and ADK Version Share history.</div>
+          <div><strong>Program workbook:</strong> merges imported workbook tabs with saved Platform &amp; Regional KPI snapshots plus ADK Version Share history. New combined monthly saves contribute regional data through the embedded estimation payload, while older standalone Regional KPI saves still remain exportable.</div>
           <div><strong>Burn down workbook:</strong> merges imported Discover tabs with saved Partner Migration uploads that include raw Sentry rows.</div>
           <div><strong>Important:</strong> platform rows are only exportable from saves created after this feature, because older snapshots did not retain the partner-level workbook data needed to rebuild the legacy tabs.</div>
         </div>

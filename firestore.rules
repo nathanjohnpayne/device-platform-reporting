@@ -43,6 +43,14 @@ service cloud.firestore {
       allow read, write: if isAllowedUser();
     }
 
+    match /partnerRegionMappings/{document} {
+      allow read, write: if isAllowedUser();
+    }
+
+    match /partnerRegionMappingMeta/{document} {
+      allow read, write: if isAllowedUser();
+    }
+
     match /weeklySnapshots/{document} {
       allow read: if isAllowedUser();
       allow create: if requestOwnsDocument() && createUsesServerTimestamp(request.resource.data.uploadedAt);

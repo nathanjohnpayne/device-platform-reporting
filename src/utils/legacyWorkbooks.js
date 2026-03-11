@@ -660,7 +660,10 @@ function buildAdkVersionShareRows(importedEntries = [], savedEntries = []) {
 function buildRegionalExportEntries(snapshotDocs = []) {
   return snapshotDocs
     .map((snapshot) => {
-      const summaryRows = snapshot.summaryRows || [];
+      const regionalSnapshot = snapshot.type === 'platformKpis'
+        ? snapshot.regionalEstimate
+        : snapshot;
+      const summaryRows = regionalSnapshot?.summaryRows || [];
       if (!summaryRows.length) return null;
 
       const totals = summaryRows.reduce((acc, row) => ({
@@ -679,7 +682,7 @@ function buildRegionalExportEntries(snapshotDocs = []) {
       }));
 
       return {
-        month: monthKey(snapshot.month || summaryRows[0]?.month),
+        month: monthKey(regionalSnapshot?.month || snapshot.month || summaryRows[0]?.month),
         totals,
         regions,
       };
@@ -745,7 +748,7 @@ function buildProgramWorkbookSheets(importedProgramSheets = {}, monthlySnapshots
 
   const regionalRows = dedupeByKey([
     ...importedRegional,
-    ...buildRegionalExportEntries(regionalSnapshots),
+    ...buildRegionalExportEntries([...platformSnapshots, ...regionalSnapshots]),
   ], (entry) => entry.month);
 
   return {
