@@ -152,7 +152,7 @@ Use **Legacy Workbook Sync** in the sidebar when you need to keep the historical
 3. Export merged replacement workbooks whenever you need to refresh the legacy Google Sheets.
 
 Notes:
-- Imported workbook sheets are stored in Firestore as the historical baseline. New workbook imports are versioned so the latest baseline can be rolled back to the previous import within 30 days.
+- Imported workbook sheets are stored in Firestore as the historical baseline. New workbook imports are versioned so the latest baseline can be rolled back to the previous import within 90 days.
 - Workflow auto-saves dedupe by dataset content, not filename, so re-exporting the same source data under a new filename is still treated as already imported.
 - Import only trusted internal workbook exports. The app reads each spreadsheet locally in the browser and stores sheet contents in Firestore as the export baseline.
 - New **Partner Migration** saves now retain the raw Sentry rows needed to recreate Discover tabs in the burn-down workbook.
@@ -215,7 +215,7 @@ npm test
 
 - Firestore and Storage rules restrict all access to authenticated @disney.com and @disneystreaming.com users.
 - Domain enforcement happens both in the Firebase Auth layer (client-side) and in Firestore security rules (server-side).
-- Auto-saved workflow imports, legacy workbook baselines, and rollback metadata are creator-owned for delete/rollback paths. The shared 30-day rollback window is enforced from Firestore server timestamps.
+- Auto-saved workflow imports, legacy workbook baselines, and rollback metadata are creator-owned for delete/rollback paths. The shared 90-day rollback window is enforced from Firestore server timestamps.
 - No data is publicly readable.
 
 ---
