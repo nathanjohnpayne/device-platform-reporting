@@ -1,7 +1,12 @@
 import React, { useEffect, useState } from 'react';
-import { CartesianGrid, Cell, Legend, Line, LineChart, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
+import { CartesianGrid, Cell, Legend, Line, LineChart, Pie, PieChart, Tooltip, XAxis, YAxis } from 'recharts';
 import { collection, getDocs, limit, orderBy, query } from 'firebase/firestore';
 import AutoSaveStatus from '../components/AutoSaveStatus';
+import ChartWrapper from '../components/ChartWrapper';
+import ConfluenceCopyButtons from '../components/ConfluenceCopyButtons';
+import ConfluencePreview from '../components/ConfluencePreview';
+import ConflictDialog from '../components/ConflictDialog';
+import MissingDataGuidance from '../components/MissingDataGuidance';
 import UploadZone from '../components/UploadZone';
 import { db } from '../firebase';
 import useAutoImport from '../hooks/useAutoImport';
@@ -14,6 +19,8 @@ import {
   formatPercent,
   getFieldValue,
   guessDateKey,
+  htmlToMarkdown,
+  htmlToPlainText,
   normalizeDateValue,
   parseNumber,
   safePercent,
@@ -96,15 +103,32 @@ export default function AdkVersionShare() {
   const [data, setData] = useState(null);
   const [adkMap, setAdkMap] = useState({});
   const [history, setHistory] = useState([]);
-  const [copied, setCopied] = useState(false);
   const [mappingsLoaded, setMappingsLoaded] = useState(false);
   const [importGeneration, setImportGeneration] = useState(0);
   const [sourceFiles, setSourceFiles] = useState([]);
+  const [missingPriorWeek, setMissingPriorWeek] = useState(null);
+  const [guidanceDismissed, setGuidanceDismissed] = useState(false);
 
   const loadHistory = () => (
     getDocs(query(collection(db, 'adkVersionShare'), orderBy('weekOf', 'desc'), limit(52)))
       .then((snap) => {
-        setHistory(snap.docs.map((docSnap) => ({ id: docSnap.id, ...docSnap.data() })).reverse());
+        const docs = snap.docs.map((docSnap) => ({ id: docSnap.id, ...docSnap.data() })).reverse();
+        setHistory(docs);
+        // Detect missing prior week for MoM guidance
+        if (docs.length === 0) {
+          setMissingPriorWeek('the prior week');
+        } else if (docs.length < 2) {
+          const latestWeek = docs[docs.length - 1]?.weekOf || '';
+          if (latestWeek) {
+            const d = new Date(latestWeek);
+            d.setDate(d.getDate() - 7);
+            setMissingPriorWeek(d.toISOString().slice(0, 10));
+          } else {
+            setMissingPriorWeek('the prior week');
+          }
+        } else {
+          setMissingPriorWeek(null);
+        }
       })
       .catch(console.error)
   );
@@ -142,6 +166,8 @@ export default function AdkVersionShare() {
           trendData: analysis.trendData,
         },
         sourceFiles,
+        periodField: 'weekOf',
+        periodKey: weekOf,
         summary: {
           weekOf,
           rowCount: data?.length || 0,
@@ -185,13 +211,11 @@ export default function AdkVersionShare() {
 
     return `<h3>ADK Version Share</h3>
 <p>Latest Conviva point: ${analysis.latestLabel}</p>
-<ul>${lines}</ul>`;
-  };
-
-  const copy = () => {
-    navigator.clipboard.writeText(generateConfluence());
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
+<!-- [CHART: ADK Version Share — Unique Devices by Version (pie, latest snapshot)]
+     Paste chart image here. Use Copy Chart button above, then Insert > Image in Confluence. -->
+<ul>${lines}</ul>
+<!-- [CHART: ADK Version Share — Unique Devices With Attempts (30-day trend)]
+     Paste chart image here. Use Copy Chart button above, then Insert > Image in Confluence. -->`;
   };
 
   return (
@@ -233,6 +257,14 @@ export default function AdkVersionShare() {
             ✅ Version share calculated from {data.length} rows. Latest snapshot: {analysis.latestLabel}.
           </div>
 
+          {missingPriorWeek && !guidanceDismissed && (
+            <MissingDataGuidance
+              source="conviva-adk"
+              missingPeriod={missingPriorWeek}
+              onDismiss={() => setGuidanceDismissed(true)}
+            />
+          )}
+
           <AutoSaveStatus
             label="ADK Version Share"
             status={autoSave.status}
@@ -242,11 +274,21 @@ export default function AdkVersionShare() {
             onRollback={autoSave.rollback}
           />
 
+          {autoSave.status === 'conflict' && autoSave.conflictData && (
+            <ConflictDialog
+              existingSnapshot={autoSave.conflictData.existingSnapshot}
+              newSnapshotRequest={autoSave.conflictData.newSnapshotRequest}
+              onKeep={() => autoSave.resolveConflict('keep')}
+              onReplace={() => autoSave.resolveConflict('replace')}
+              busy={autoSave.conflictResolving}
+            />
+          )}
+
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20 }}>
             <div className="card">
               <div className="card-title">🥧 Latest ADK Version Share</div>
               <div className="card-subtitle">Latest point from the uploaded 30-day export</div>
-              <ResponsiveContainer width="100%" height={260}>
+              <ChartWrapper title="ADK Version Share — Unique Devices by Version" height={260}>
                 <PieChart>
                   <Pie data={analysis.pieData} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={90} label={({ name, pct }) => `${name}: ${pct}`} labelLine={false}>
                     {analysis.pieData.map((_, index) => <Cell key={index} fill={COLORS[index % COLORS.length]} />)}
@@ -254,7 +296,7 @@ export default function AdkVersionShare() {
                   <Tooltip formatter={(value) => compactNumber(value, 1)} />
                   <Legend wrapperStyle={{ fontSize: 12 }} />
                 </PieChart>
-              </ResponsiveContainer>
+              </ChartWrapper>
             </div>
 
             <div className="card">
@@ -283,7 +325,7 @@ export default function AdkVersionShare() {
           <div className="card">
             <div className="card-title">📈 Unique Devices With Attempts Trend</div>
             <div className="card-subtitle">30-day series from the uploaded Conviva export</div>
-            <ResponsiveContainer width="100%" height={260}>
+            <ChartWrapper title="ADK Version Share — Unique Devices With Attempts (30-day trend)" height={260}>
               <LineChart data={analysis.trendData}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
                 <XAxis dataKey="label" tick={{ fontSize: 10 }} minTickGap={18} />
@@ -294,14 +336,14 @@ export default function AdkVersionShare() {
                   <Line key={label} type="monotone" dataKey={label} name={label} stroke={COLORS[index % COLORS.length]} strokeWidth={2} dot={false} />
                 ))}
               </LineChart>
-            </ResponsiveContainer>
+            </ChartWrapper>
           </div>
 
           {history.length > 1 && (
             <div className="card">
               <div className="card-title">🗂️ Weekly Saved History</div>
               <div className="card-subtitle">Most recent saved weekly share snapshots</div>
-              <ResponsiveContainer width="100%" height={220}>
+              <ChartWrapper title="ADK Version Share — Weekly Saved History" height={220}>
                 <LineChart data={history.slice(-12)}>
                   <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
                   <XAxis dataKey="weekOf" tick={{ fontSize: 10 }} />
@@ -323,17 +365,18 @@ export default function AdkVersionShare() {
                     />
                   ))}
                 </LineChart>
-              </ResponsiveContainer>
+              </ChartWrapper>
             </div>
           )}
 
           <div className="card">
             <div className="card-title">🚀 Confluence Output</div>
             <div className="card-subtitle">Paste into the "ADK Version Share" section of the weekly Confluence page.</div>
-            <div className="output-preview">{generateConfluence()}</div>
-            <div className="output-actions">
-              <button className="btn btn-primary" onClick={copy}>{copied ? '✅ Copied!' : '📋 Copy to Clipboard'}</button>
-            </div>
+            <ConfluenceCopyButtons
+              textContent={htmlToPlainText(generateConfluence())}
+              markdownContent={htmlToMarkdown(generateConfluence())}
+            />
+            <ConfluencePreview content={generateConfluence()} />
           </div>
         </>
       )}

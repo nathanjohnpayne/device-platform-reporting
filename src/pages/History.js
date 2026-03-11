@@ -1,9 +1,10 @@
 // pages/History.js
 import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { collection, getDocs, query, orderBy, limit } from 'firebase/firestore';
 import RollbackButton from '../components/RollbackButton';
 import { db } from '../firebase';
-import { canRollback, formatImportTimestamp, getRollbackUntilMs, rollbackImportSnapshot, timestampToMs } from '../utils/importHistory';
+import { canRollback, formatImportTimestamp, getRollbackUntilMs, rollbackImportSnapshot, timestampToMs, ROLLBACK_WINDOW_DAYS } from '../utils/importHistory';
 
 function renderRollbackAction(row, setRows, rollingBackId, setRollingBackId, subject) {
   const rollbackUntilMs = row.rollbackUntilMs || getRollbackUntilMs(timestampToMs(row.uploadedAt));
@@ -31,7 +32,7 @@ function renderRollbackAction(row, setRows, rollingBackId, setRollingBackId, sub
         }}
       />
       <span className="text-muted">
-        {canRollback(rollbackUntilMs) ? `Until ${formatImportTimestamp(rollbackUntilMs)}` : '30-day window expired'}
+        {canRollback(rollbackUntilMs) ? `Until ${formatImportTimestamp(rollbackUntilMs)}` : `${ROLLBACK_WINDOW_DAYS}-day window expired`}
       </span>
     </div>
   );
@@ -41,6 +42,7 @@ function HistoryTable({ title, collectionName, columns }) {
   const [rows, setRows]       = useState([]);
   const [loading, setLoading] = useState(true);
   const [rollingBackId, setRollingBackId] = useState(null);
+  const navigate = useNavigate();
 
   useEffect(() => {
     getDocs(query(collection(db, collectionName), orderBy('uploadedAt', 'desc'), limit(50)))
@@ -48,37 +50,60 @@ function HistoryTable({ title, collectionName, columns }) {
       .catch(() => setLoading(false));
   }, [collectionName]);
 
+  const activeRows = rows.filter((r) => !r.supersededAt);
+  const supersededRows = rows.filter((r) => r.supersededAt);
+
+  const renderTable = (tableRows, dimmed = false) => (
+    <div style={{ overflowX: 'auto', opacity: dimmed ? 0.65 : 1 }}>
+      <table className="data-table">
+        <thead>
+          <tr>
+            {columns.map(c => <th key={c.key}>{c.label}</th>)}
+          </tr>
+        </thead>
+        <tbody>
+          {tableRows.map((r) => (
+            <tr
+              key={r.id}
+              onClick={() => navigate(`/history/${collectionName}/${r.id}`)}
+              style={{ cursor: 'pointer' }}
+              title="View snapshot detail"
+            >
+              {columns.map(c => (
+                <td key={c.key}>
+                  {c.render ? c.render(r, setRows, rollingBackId, setRollingBackId) : (r[c.key] ?? '—')}
+                </td>
+              ))}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+
   return (
     <div className="card">
       <div className="card-title">{title}</div>
-      <div className="card-subtitle">{loading ? 'Loading…' : `${rows.length} record${rows.length !== 1 ? 's' : ''} (most recent 50)`}</div>
-      {!loading && rows.length === 0 ? (
-          <div className="empty-state" style={{ padding: '24px 0' }}>
+      <div className="card-subtitle">{loading ? 'Loading…' : `${activeRows.length} record${activeRows.length !== 1 ? 's' : ''} (most recent 50) — click any row to view snapshot detail`}</div>
+      {!loading && activeRows.length === 0 ? (
+        <div className="empty-state" style={{ padding: '24px 0' }}>
           <div className="empty-state-icon">📭</div>
           <h3>No data yet</h3>
           <p>Records appear here after you complete a workflow and the import auto-saves.</p>
         </div>
       ) : (
-        <div style={{ overflowX: 'auto' }}>
-          <table className="data-table">
-            <thead>
-              <tr>
-                {columns.map(c => <th key={c.key}>{c.label}</th>)}
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((r) => (
-                <tr key={r.id}>
-                  {columns.map(c => (
-                    <td key={c.key}>
-                      {c.render ? c.render(r, setRows, rollingBackId, setRollingBackId) : (r[c.key] ?? '—')}
-                    </td>
-                  ))}
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+        renderTable(activeRows)
+      )}
+      {!loading && supersededRows.length > 0 && (
+        <details style={{ marginTop: 12 }}>
+          <summary style={{ cursor: 'pointer', fontSize: 13, color: '#64748b', padding: '4px 0' }}>
+            Replaced uploads ({supersededRows.length})
+          </summary>
+          <div className="alert alert-info" style={{ margin: '8px 0 4px', fontSize: 12 }}>
+            These snapshots were replaced via "Use new upload" and are kept for 90 days from replacement.
+          </div>
+          {renderTable(supersededRows, true)}
+        </details>
       )}
     </div>
   );
@@ -92,7 +117,7 @@ export default function History() {
       </div>
 
       <div className="alert alert-info">
-        ℹ️ All records saved via the weekly and monthly workflows appear here automatically. Rollback is available only for rollback-enabled imports from the last 30 days. Legacy Google Sheets import/export now lives in <a href="/legacy-sync" style={{ fontWeight: 700 }}>Legacy Workbook Sync</a>.
+        ℹ️ All records saved via the weekly and monthly workflows appear here automatically. Rollback is available only for rollback-enabled imports from the last {ROLLBACK_WINDOW_DAYS} days. Legacy Google Sheets import/export now lives in <a href="/legacy-sync" style={{ fontWeight: 700 }}>Legacy Workbook Sync</a>.
       </div>
 
       <HistoryTable
