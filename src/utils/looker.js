@@ -252,6 +252,8 @@ export async function parseLookerZip(file) {
 
     parsedFiles.push({
       name: entry.name.split('/').pop(),
+      // Regional estimation needs the untouched matrix text while the platform
+      // workflow still uses the header-parsed rows from the same ZIP entry.
       rawText: text,
       rows: result.data,
       metricType: identifyMetricTypeFromFilename(entry.name),

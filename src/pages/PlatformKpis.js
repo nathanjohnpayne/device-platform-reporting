@@ -52,17 +52,19 @@ const CHART_METRICS = [
   { key: 'hpv', label: 'HPV', formatter: (value) => formatHpv(value) },
 ];
 
-const EMPTY_REGIONAL_INPUTS = {
-  activeAccountText: '',
-  activeAccountFileName: '',
-  playbackHoursText: '',
-  playbackHoursFileName: '',
-  regionalDeviceDistributionText: '',
-  regionalDeviceDistributionFileName: '',
-  averageDailyActiveDevicesText: '',
-  averageDailyActiveDevicesFileName: '',
-  zipFileName: '',
-};
+function createEmptyRegionalInputs() {
+  return {
+    activeAccountText: '',
+    activeAccountFileName: '',
+    playbackHoursText: '',
+    playbackHoursFileName: '',
+    regionalDeviceDistributionText: '',
+    regionalDeviceDistributionFileName: '',
+    averageDailyActiveDevicesText: '',
+    averageDailyActiveDevicesFileName: '',
+    zipFileName: '',
+  };
+}
 
 function formatHpv(value) {
   const numeric = parseNumber(value);
@@ -144,12 +146,13 @@ export default function PlatformKpis() {
   const [chartMetric, setChartMetric] = useState('mau');
   const [copied, setCopied] = useState(false);
   const [uploadSources, setUploadSources] = useState({});
-  const [regionalInputs, setRegionalInputs] = useState(EMPTY_REGIONAL_INPUTS);
+  const [regionalInputs, setRegionalInputs] = useState(createEmptyRegionalInputs);
   const [importGeneration, setImportGeneration] = useState(0);
   const [savedSeriesByPlatform, setSavedSeriesByPlatform] = useState({});
   const [savedSeriesByRegion, setSavedSeriesByRegion] = useState({});
   const [historyLoading, setHistoryLoading] = useState(true);
   const [mappingLoading, setMappingLoading] = useState(true);
+  const [mappingError, setMappingError] = useState('');
   const [partnerMappings, setPartnerMappings] = useState([]);
   const [mappingMeta, setMappingMeta] = useState(null);
 
@@ -181,6 +184,7 @@ export default function PlatformKpis() {
 
   const loadPartnerMappings = async () => {
     setMappingLoading(true);
+    setMappingError('');
 
     try {
       const [rowsSnap, metaSnap] = await Promise.all([
@@ -192,6 +196,9 @@ export default function PlatformKpis() {
       setMappingMeta(metaSnap.exists() ? metaSnap.data() : null);
     } catch (error) {
       console.error(error);
+      setPartnerMappings([]);
+      setMappingMeta(null);
+      setMappingError(error.message || 'Unable to load the partner-region mapping.');
     } finally {
       setMappingLoading(false);
     }
@@ -327,7 +334,7 @@ export default function PlatformKpis() {
     validatePlatformUpload(rows, metricType);
     setUploads((prev) => ({ ...prev, [metricType]: rows }));
     setUploadSources((prev) => ({ ...prev, [metricType]: sourceFileName || prev[metricType] }));
-    setRegionalInputs(EMPTY_REGIONAL_INPUTS);
+    setRegionalInputs(createEmptyRegionalInputs());
     setImportGeneration((current) => current + 1);
   };
 
@@ -405,6 +412,9 @@ export default function PlatformKpis() {
     const regionalSection = [
       `<h3>Regional KPI Estimates — ${formatDateLabel(currentRegionalEstimate?.month || month)}</h3>`,
       `<p><em>${REGIONAL_ESTIMATE_DISCLAIMER} Directly region-coded partners stay assigned to those regions. Global or unmapped partners are distributed proportionally from the observed direct partner mix, which can bias results if the unmapped base behaves differently.</em></p>`,
+      ...(currentRegionalEstimate?.fallbackMetrics?.length
+        ? [`⚠️ Note: ${currentRegionalEstimate.fallbackMetrics.join(', ')} used equal-split fallback allocation (no direct partner-region matches found).`]
+        : []),
       ...regionalSummaryRows.map((row) => (
         `${row.region}: MAU ${compactNumber(row.current.mau, 2)} (${formatChange(row.mauMoM)}) | MAD ${compactNumber(row.current.mad, 2)} (${formatChange(row.madMoM)}) | Playback Hrs ${compactNumber(row.current.hrs, 2)} (${formatChange(row.hrsMoM)})`
       )),
@@ -605,6 +615,12 @@ export default function PlatformKpis() {
             {!partnerMappings.length && !mappingLoading && (
               <div className="alert alert-warning">
                 Import the Sheet 1 CSV in <Link to="/partner-region-mapping" style={{ fontWeight: 700 }}>Partner Region Mapping</Link> to enable the regional estimate model.
+              </div>
+            )}
+
+            {mappingError && (
+              <div className="alert alert-error">
+                Unable to load the partner-region mapping. {mappingError}
               </div>
             )}
 

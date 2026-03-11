@@ -40,6 +40,8 @@ export function normalizeMappedRegion(value = '') {
     return null;
   }).filter(Boolean))];
 
+  // Multi-region partners stay in the global/unmapped pool so the estimator only
+  // uses directly coded single-region partners to derive the allocation mix.
   return mapped.length === 1 ? mapped[0] : null;
 }
 
@@ -139,6 +141,8 @@ function resolveMatchRows(matchRows = []) {
     return { kind: 'direct', region: resolvedRegions[0] };
   }
 
+  // Conflicting or partially global matches fall back to the global pool so a
+  // shared alias cannot directly attribute the same dashboard column twice.
   return { kind: 'global', region: null };
 }
 
