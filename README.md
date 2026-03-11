@@ -187,7 +187,27 @@ npm run build
 
 Notes:
 - `npm test` is currently a placeholder (`echo no tests`).
+- The automated test suite plan lives in [`specs/Automated_Test_Suite_Plan.md`](./specs/Automated_Test_Suite_Plan.md).
 - Production builds currently emit webpack bundle-size warnings, but they complete successfully.
+
+---
+
+## Automated testing roadmap
+
+This repo does not yet ship an automated test harness, but the planned rollout is now documented in [`specs/Automated_Test_Suite_Plan.md`](./specs/Automated_Test_Suite_Plan.md).
+
+Summary:
+- Start with Jest + React Testing Library because the app already uses Babel and webpack.
+- Cover pure parsing and reporting utilities first (`reporting`, `conviva`, `playback`, `looker`, `regionalEstimates`, `legacyWorkbooks`, `importHistory`).
+- Add page-level workflow tests next with mocked Firebase modules.
+- Add a small Playwright smoke suite only after the fast test layer is stable, ideally against Firebase emulators or a test-only auth seam instead of live Google Sign-In.
+
+Planned pull-request gate once implemented:
+
+```bash
+npm run build
+npm test
+```
 
 ---
 
