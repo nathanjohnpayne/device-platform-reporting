@@ -204,3 +204,58 @@ export function getChangeClass(value) {
   if (numeric == null) return '';
   return numeric < 0 ? 'neg' : 'pos';
 }
+
+export function slugify(text) {
+  return String(text || '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+}
+
+function stripTags(html) {
+  return (html || '').replace(/<[^>]+>/g, '');
+}
+
+function decodeEntities(text) {
+  return text
+    .replace(/&amp;/g, '&')
+    .replace(/&gt;/g, '>')
+    .replace(/&lt;/g, '<')
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&#39;/g, "'")
+    .replace(/&quot;/g, '"');
+}
+
+export function htmlToPlainText(html) {
+  if (!html) return '';
+  return decodeEntities(
+    html
+      .replace(/<!--[\s\S]*?-->/g, '')
+      .replace(/<h3[^>]*>([\s\S]*?)<\/h3>/gi, (_, t) => `${stripTags(t).toUpperCase()}\n`)
+      .replace(/<h4[^>]*>([\s\S]*?)<\/h4>/gi, (_, t) => `${stripTags(t)}\n`)
+      .replace(/<li[^>]*>([\s\S]*?)<\/li>/gi, (_, t) => `  \u2022 ${stripTags(t)}\n`)
+      .replace(/<ul[^>]*>([\s\S]*?)<\/ul>/gi, (_, t) => `${t}\n`)
+      .replace(/<p[^>]*>([\s\S]*?)<\/p>/gi, (_, t) => `${stripTags(t)}\n`)
+      .replace(/<[^>]+>/g, '')
+      .replace(/\n{3,}/g, '\n\n')
+      .trim()
+  );
+}
+
+export function htmlToMarkdown(html) {
+  if (!html) return '';
+  return decodeEntities(
+    html
+      .replace(/<!--[\s\S]*?-->/g, '')
+      .replace(/<strong[^>]*>([\s\S]*?)<\/strong>/gi, (_, t) => `**${stripTags(t)}**`)
+      .replace(/<em[^>]*>([\s\S]*?)<\/em>/gi, (_, t) => `_${stripTags(t)}_`)
+      .replace(/<h3[^>]*>([\s\S]*?)<\/h3>/gi, (_, t) => `### ${stripTags(t)}\n\n`)
+      .replace(/<h4[^>]*>([\s\S]*?)<\/h4>/gi, (_, t) => `#### ${stripTags(t)}\n\n`)
+      .replace(/<li[^>]*>([\s\S]*?)<\/li>/gi, (_, t) => `- ${stripTags(t)}\n`)
+      .replace(/<ul[^>]*>([\s\S]*?)<\/ul>/gi, (_, t) => `${t}\n`)
+      .replace(/<p[^>]*>([\s\S]*?)<\/p>/gi, (_, t) => `${stripTags(t)}\n\n`)
+      .replace(/<[^>]+>/g, '')
+      .replace(/\n{3,}/g, '\n\n')
+      .trim()
+  );
+}
