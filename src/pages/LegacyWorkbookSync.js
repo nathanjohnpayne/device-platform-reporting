@@ -13,7 +13,7 @@ import RollbackButton from '../components/RollbackButton';
 import UploadZone from '../components/UploadZone';
 import { auth, db } from '../firebase';
 import { buildAdkVersionMap } from '../utils/adk';
-import { buildImportBatchId, canRollback, formatImportTimestamp, getRollbackUntilMs } from '../utils/importHistory';
+import { buildImportBatchId, canRollback, formatImportTimestamp, getRollbackUntilMs, ROLLBACK_WINDOW_DAYS } from '../utils/importHistory';
 import {
   buildImportSummary,
   buildLegacyWorkbook,
@@ -175,7 +175,7 @@ export default function LegacyWorkbookSync() {
       await batch.commit();
       await refreshStatus();
 
-      setStatus(`${buildImportSummary(workbookType, workbook.sheets)} Rollback is available for 30 days.`);
+      setStatus(`${buildImportSummary(workbookType, workbook.sheets)} Rollback is available for 90 days.`);
 
       return {
         status: 'ok',
@@ -210,7 +210,7 @@ export default function LegacyWorkbookSync() {
       }
 
       if (!canRollback(rollbackUntilMs)) {
-        throw new Error('Only workbook imports from the last 30 days can be rolled back.');
+        throw new Error('Only workbook imports from the last 90 days can be rolled back.');
       }
 
       const batch = writeBatch(db);
@@ -407,7 +407,7 @@ export default function LegacyWorkbookSync() {
                         label="Roll back import"
                       />
                       <span className="text-muted">
-                        {canRollback(card.rollbackUntilMs) ? `Until ${formatImportTimestamp(card.rollbackUntilMs)}` : '30-day window expired'}
+                        {canRollback(card.rollbackUntilMs) ? `Until ${formatImportTimestamp(card.rollbackUntilMs)}` : `${ROLLBACK_WINDOW_DAYS}-day window expired`}
                       </span>
                     </div>
                   ) : (

@@ -152,7 +152,7 @@ Use **Legacy Workbook Sync** in the sidebar when you need to keep the historical
 3. Export merged replacement workbooks whenever you need to refresh the legacy Google Sheets.
 
 Notes:
-- Imported workbook sheets are stored in Firestore as the historical baseline. New workbook imports are versioned so the latest baseline can be rolled back to the previous import within 30 days.
+- Imported workbook sheets are stored in Firestore as the historical baseline. New workbook imports are versioned so the latest baseline can be rolled back to the previous import within 90 days.
 - Workflow auto-saves dedupe by dataset content, not filename, so re-exporting the same source data under a new filename is still treated as already imported.
 - Import only trusted internal workbook exports. The app reads each spreadsheet locally in the browser and stores sheet contents in Firestore as the export baseline.
 - New **Partner Migration** saves now retain the raw Sentry rows needed to recreate Discover tabs in the burn-down workbook.
@@ -187,7 +187,27 @@ npm run build
 
 Notes:
 - `npm test` is currently a placeholder (`echo no tests`).
+- The automated test suite plan lives in [`specs/Automated_Test_Suite_Plan.md`](./specs/Automated_Test_Suite_Plan.md).
 - Production builds currently emit webpack bundle-size warnings, but they complete successfully.
+
+---
+
+## Automated testing roadmap
+
+This repo does not yet ship an automated test harness, but the planned rollout is now documented in [`specs/Automated_Test_Suite_Plan.md`](./specs/Automated_Test_Suite_Plan.md).
+
+Summary:
+- Start with Jest + React Testing Library because the app already uses Babel and webpack.
+- Cover pure parsing and reporting utilities first (`reporting`, `conviva`, `playback`, `looker`, `regionalEstimates`, `legacyWorkbooks`, `importHistory`).
+- Add page-level workflow tests next with mocked Firebase modules.
+- Add a small Playwright smoke suite only after the fast test layer is stable, ideally against Firebase emulators or a test-only auth seam instead of live Google Sign-In.
+
+Planned pull-request gate once implemented:
+
+```bash
+npm run build
+npm test
+```
 
 ---
 
@@ -195,7 +215,7 @@ Notes:
 
 - Firestore and Storage rules restrict all access to authenticated @disney.com and @disneystreaming.com users.
 - Domain enforcement happens both in the Firebase Auth layer (client-side) and in Firestore security rules (server-side).
-- Auto-saved workflow imports, legacy workbook baselines, and rollback metadata are creator-owned for delete/rollback paths. The shared 30-day rollback window is enforced from Firestore server timestamps.
+- Auto-saved workflow imports, legacy workbook baselines, and rollback metadata are creator-owned for delete/rollback paths. The shared 90-day rollback window is enforced from Firestore server timestamps.
 - No data is publicly readable.
 
 ---
