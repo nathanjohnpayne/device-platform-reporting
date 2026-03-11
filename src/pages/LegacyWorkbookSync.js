@@ -175,7 +175,7 @@ export default function LegacyWorkbookSync() {
       await batch.commit();
       await refreshStatus();
 
-      setStatus(`${buildImportSummary(workbookType, workbook.sheets)} Rollback is available for 30 days.`);
+      setStatus(`${buildImportSummary(workbookType, workbook.sheets)} Rollback is available for 90 days.`);
 
       return {
         status: 'ok',
@@ -210,7 +210,7 @@ export default function LegacyWorkbookSync() {
       }
 
       if (!canRollback(rollbackUntilMs)) {
-        throw new Error('Only workbook imports from the last 30 days can be rolled back.');
+        throw new Error('Only workbook imports from the last 90 days can be rolled back.');
       }
 
       const batch = writeBatch(db);

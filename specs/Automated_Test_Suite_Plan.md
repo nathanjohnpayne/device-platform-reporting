@@ -54,6 +54,7 @@ This is the first milestone and should become the base of the suite.
 | `src/utils/playback.js` | metric grouping, anomaly detection, threshold messaging, markdown/text generation |
 | `src/utils/looker.js` | ZIP file role detection, pivoted vs flat Looker parsing, dataset merge, trend generation |
 | `src/utils/regionalEstimates.js` | partner snapshot parsing, device-distribution parsing, allocation math, fallback region mix logic |
+| `src/utils/partnerRegionMapping.js` | mapping CSV validation, region normalization, alias indexing, partner-to-region resolution |
 | `src/utils/adk.js` | core version normalization and ADK label resolution |
 | `src/utils/importHistory.js` | content hashing, rollback window math, duplicate detection helpers |
 | `src/utils/legacyWorkbooks.js` | workbook validation, CSV round-trip helpers, legacy snapshot generation, merged export builders |
@@ -87,6 +88,7 @@ These should mount real page components with `MemoryRouter`, mocked Firebase mod
 | `AdkVersionShare` | parse Conviva export, resolve ADK labels, show pie/trend outputs, handle missing mappings warning |
 | `PartnerMigration` | derive current GA, treat unmapped versions as legacy, apply device and alert thresholds |
 | `PlatformKpis` | load platform rows from ZIP/manual CSVs, merge with saved history, surface missing prior month guidance |
+| `RegionalKpis` | verify the route redirect to `/platform-kpis#region-estimates`; regional workflow behavior itself is covered through `PlatformKpis` |
 | `PartnerRegionMapping` | import mapping CSV, reject malformed rows, surface active mapping metadata |
 | `LegacyWorkbookSync` | reject wrong workbook family, show import counts, surface export/rollback state |
 | `History` and `SnapshotDetail` | render saved snapshots, route to details, expose rollback action only when allowed |
@@ -151,7 +153,7 @@ To make browser tests practical, add a small auth seam in a follow-up change. Th
 
 - add Jest + RTL infrastructure
 - add fixture directories
-- cover `reporting`, `conviva`, `playback`, `adk`, and `importHistory`
+- cover `reporting`, `conviva`, `playback`, `adk`, `partnerRegionMapping`, and `importHistory`
 - replace `npm test` placeholder with the real unit/component runner
 
 Exit criteria:
