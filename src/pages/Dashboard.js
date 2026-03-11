@@ -36,17 +36,8 @@ const workflows = [
     icon: '📈',
     badge: 'Monthly',
     badgeCls: 'badge-monthly',
-    title: 'Platform KPIs',
-    desc: 'Upload Looker CSVs. Builds MAU, MAD, HPV table by platform (PlayStation, Xbox, ADK) with MoM %.',
-    source: 'Looker',
-  },
-  {
-    to: '/regional-kpis',
-    icon: '🌍',
-    badge: 'Monthly',
-    badgeCls: 'badge-monthly',
-    title: 'Regional KPIs',
-    desc: 'Upload Looker CSVs. Builds MAU, MAD, Playback Hours by region (APAC, Domestic, EMEA, LATAM) with MoM %.',
+    title: 'Platform & Regional KPIs',
+    desc: 'Upload the monthly Looker zip. Builds platform KPIs plus estimated regional MAU, MAD, and Playback Hours using the partner mapping model.',
     source: 'Looker',
   },
   {
@@ -57,6 +48,15 @@ const workflows = [
     title: 'ADK Version Manager',
     desc: 'Add or edit ADK version → core_version mappings used across all partner migration and version share workflows.',
     source: 'Firestore',
+  },
+  {
+    to: '/partner-region-mapping',
+    icon: '🗺️',
+    badge: 'Admin',
+    badgeCls: 'badge-admin',
+    title: 'Partner Region Mapping',
+    desc: 'Import the Sheet 1 CSV used to map partners and dashboard aliases into the regional estimation workflow.',
+    source: 'Google Sheets / Firestore',
   },
   {
     to: '/legacy-sync',
@@ -87,7 +87,7 @@ export default function Dashboard() {
       </div>
 
       <div className="alert alert-info">
-        ℹ️ <span><strong>Monday morning workflow:</strong> Run Playback Performance, ADK Version Share, and Partner Migration each week before the 10:00 AM PT program meeting. Platform and Regional KPIs are updated monthly.</span>
+        ℹ️ <span><strong>Monday morning workflow:</strong> Run Playback Performance, ADK Version Share, and Partner Migration each week before the 10:00 AM PT program meeting. Platform &amp; Regional KPIs are updated monthly from the Looker export plus the partner-region mapping.</span>
       </div>
 
       <div className="workflow-grid">
@@ -112,6 +112,7 @@ export default function Dashboard() {
           <a className="source-link" href="https://pulse.conviva.com/app/custom-dashboards/dashboard/28764?data-source=ei" target="_blank" rel="noreferrer">🥧 Conviva: ADK Version Comparisons</a>
           <a className="source-link" href="https://looker.disneystreaming.com/dashboards/11169?Date+Granularity=monthly&Device+Family=rust" target="_blank" rel="noreferrer">📈 Looker: D+ Device Health Dashboard</a>
           <a className="source-link" href="https://disney.my.sentry.io/organizations/disney/explore/discover/results/?field=partner&field=device&field=core_version&field=count_unique%28device_id%29&field=count%28%29&name=ADK%20Partner%20-%20Device%20Combinations&project=23&query=%21partner%3Arefapp%20%21partner%3Abroadcom%20%21partner%3Avpe%20title%3Alaunch%20%21partner%3Adss%20%21partner%3Atwdc_microsoft%20%21partner%3Atwdc_amazon&sort=-count_unique_device_id&statsPeriod=24h&yAxis=count_unique%28device_id%29&yAxis=count%28%29" target="_blank" rel="noreferrer">🔄 Sentry: ADK Partner-Device Combos</a>
+          <a className="source-link" href="https://docs.google.com/spreadsheets/d/1gla_k5-dERGc10XwS1R56E_69FAFreXRjVso_LEuYoU/edit?gid=0#gid=0" target="_blank" rel="noreferrer">🗺️ Google Sheets: Partner Region Mapping</a>
           <a className="source-link" href="https://docs.google.com/spreadsheets/d/1Ic6Uicee5VJezKn9BSYiSyb9BBKZjN04PGNI5Eqrml0/edit" target="_blank" rel="noreferrer">📋 Google Sheets: Historical KPIs</a>
           <a className="source-link" href="https://docs.google.com/spreadsheets/d/1dDRQ9Mj0A6HGr4uiM-FoPOIGs6GxF2BRgk1MsSavGu8/edit" target="_blank" rel="noreferrer">📋 Google Sheets: ADK Adoption Burn Down</a>
         </div>

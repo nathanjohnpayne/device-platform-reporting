@@ -147,7 +147,11 @@ export default function History() {
         collectionName="monthlySnapshots"
         columns={[
           { key: 'month', label: 'Month' },
-          { key: 'type',  label: 'Type', render: r => r.type === 'platformKpis' ? 'Platform KPIs' : 'Regional KPIs' },
+          {
+            key: 'type',
+            label: 'Type',
+            render: (row) => row.workflowLabel || (row.type === 'platformKpis' ? 'Platform KPIs' : 'Regional KPIs'),
+          },
           { key: 'uploadedAt', label: 'Uploaded', render: r => r.uploadedAt?.toDate?.().toLocaleString() || '—' },
           {
             key: 'actions',
@@ -157,7 +161,9 @@ export default function History() {
               setRows,
               rollingBackId,
               setRollingBackId,
-              `the ${row.type === 'platformKpis' ? 'platform KPI' : 'regional KPI'} import`
+              row.workflowLabel
+                ? `the ${row.workflowLabel.toLowerCase()} import`
+                : `the ${row.type === 'platformKpis' ? 'platform KPI' : 'regional KPI'} import`
             ),
           },
         ]}
