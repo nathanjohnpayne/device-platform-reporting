@@ -12,6 +12,7 @@ import PartnerMigration from './pages/PartnerMigration';
 import PlatformKpis from './pages/PlatformKpis';
 import RegionalKpis from './pages/RegionalKpis';
 import AdkVersionManager from './pages/AdkVersionManager';
+import PartnerRegionMapping from './pages/PartnerRegionMapping';
 import History from './pages/History';
 import LegacyWorkbookSync from './pages/LegacyWorkbookSync';
 import './styles.css';
@@ -31,9 +32,10 @@ const TITLES = {
   '/playback-performance':  'Playback Performance',
   '/adk-version-share':     'ADK Version Share',
   '/partner-migration':     'Partner Migration Status',
-  '/platform-kpis':         'Platform KPIs',
-  '/regional-kpis':         'Regional KPIs',
+  '/platform-kpis':         'Platform & Regional KPIs',
+  '/regional-kpis':         'Platform & Regional KPIs',
   '/adk-versions':          'ADK Version Manager',
+  '/partner-region-mapping':'Partner Region Mapping',
   '/history':               'Historical Data',
   '/legacy-sync':           'Legacy Workbook Sync',
 };
@@ -72,6 +74,7 @@ function AppShell() {
             <Route path="/platform-kpis"         element={<PlatformKpis />} />
             <Route path="/regional-kpis"         element={<RegionalKpis />} />
             <Route path="/adk-versions"          element={<AdkVersionManager />} />
+            <Route path="/partner-region-mapping" element={<PartnerRegionMapping />} />
             <Route path="/history"               element={<History />} />
             <Route path="/legacy-sync"           element={<LegacyWorkbookSync />} />
             <Route path="*"                      element={<Navigate to="/" replace />} />

@@ -10,11 +10,11 @@ const weekly = [
   { to: '/partner-migration',      icon: '🔄', label: 'Partner Migration' },
 ];
 const monthly = [
-  { to: '/platform-kpis',          icon: '📈', label: 'Platform KPIs' },
-  { to: '/regional-kpis',          icon: '🌍', label: 'Regional KPIs' },
+  { to: '/platform-kpis',          icon: '📈', label: 'Platform & Regional KPIs' },
 ];
 const admin = [
   { to: '/adk-versions',           icon: '⚙️', label: 'ADK Version Manager' },
+  { to: '/partner-region-mapping', icon: '🗺️', label: 'Partner Region Mapping' },
   { to: '/legacy-sync',            icon: '📚', label: 'Legacy Workbook Sync' },
   { to: '/history',                icon: '🗂️', label: 'Historical Data' },
 ];

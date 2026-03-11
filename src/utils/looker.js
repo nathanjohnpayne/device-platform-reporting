@@ -17,6 +17,17 @@ const REGION_ALIASES = [
   ['apac', 'APAC'],
 ];
 
+const ZIP_FILE_ROLE_BY_NAME = {
+  'active_accounts.csv': { metricType: 'mau', zipRole: 'platformMetric' },
+  'active_accounts_(data).csv': { metricType: 'mau', zipRole: 'partnerMetric' },
+  'active_devices.csv': { metricType: 'mad', zipRole: 'platformMetric' },
+  'active_devices_(data).csv': { metricType: 'mad', zipRole: 'partnerMetric' },
+  'playback_hours.csv': { metricType: 'hrs', zipRole: 'platformMetric' },
+  'playback_hours_(data).csv': { metricType: 'hrs', zipRole: 'partnerMetric' },
+  'regional_device_distribution.csv': { metricType: null, zipRole: 'regionalDeviceDistribution' },
+  'average_daily_active_devices.csv': { metricType: null, zipRole: 'averageDailyActiveDevices' },
+};
+
 const METRIC_FIELD_CANDIDATES = {
   mau: ['Total Active Accounts', 'Active Accounts', 'active_accounts', 'MAU'],
   mad: ['Total Active Devices', 'Active Devices', 'active_devices', 'MAD'],
@@ -46,11 +57,11 @@ function detectAlias(rawValue, aliases, fallback = 'Unknown') {
 }
 
 export function identifyMetricTypeFromFilename(filename = '') {
-  const basename = filename.split('/').pop()?.toLowerCase() || '';
-  if (basename === 'active_accounts.csv' || basename === 'active_accounts_(data).csv') return 'mau';
-  if (basename === 'active_devices.csv' || basename === 'active_devices_(data).csv') return 'mad';
-  if (basename === 'playback_hours.csv' || basename === 'playback_hours_(data).csv') return 'hrs';
-  return null;
+  return ZIP_FILE_ROLE_BY_NAME[filename.split('/').pop()?.toLowerCase() || '']?.metricType || null;
+}
+
+export function identifyLookerZipRole(filename = '') {
+  return ZIP_FILE_ROLE_BY_NAME[filename.split('/').pop()?.toLowerCase() || '']?.zipRole || null;
 }
 
 function pickMetricValue(row, metricType) {
@@ -225,11 +236,11 @@ export async function parseLookerZip(file) {
 
   const entries = Object.values(zip.files)
     .filter((entry) => !entry.dir && entry.name.toLowerCase().endsWith('.csv'))
-    .filter((entry) => identifyMetricTypeFromFilename(entry.name));
+    .filter((entry) => identifyLookerZipRole(entry.name));
 
   for (const entry of entries) {
-    const content = await entry.async('string');
-    const result = Papa.parse(content, {
+    const text = await entry.async('string');
+    const result = Papa.parse(text, {
       header: true,
       skipEmptyLines: true,
     });
@@ -241,8 +252,12 @@ export async function parseLookerZip(file) {
 
     parsedFiles.push({
       name: entry.name.split('/').pop(),
+      // Regional estimation needs the untouched matrix text while the platform
+      // workflow still uses the header-parsed rows from the same ZIP entry.
+      rawText: text,
       rows: result.data,
       metricType: identifyMetricTypeFromFilename(entry.name),
+      zipRole: identifyLookerZipRole(entry.name),
     });
   }
 
