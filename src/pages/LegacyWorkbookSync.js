@@ -13,7 +13,7 @@ import RollbackButton from '../components/RollbackButton';
 import UploadZone from '../components/UploadZone';
 import { auth, db } from '../firebase';
 import { buildAdkVersionMap } from '../utils/adk';
-import { buildImportBatchId, canRollback, formatImportTimestamp, getRollbackUntilMs } from '../utils/importHistory';
+import { buildImportBatchId, canRollback, formatImportTimestamp, getRollbackUntilMs, ROLLBACK_WINDOW_DAYS } from '../utils/importHistory';
 import {
   buildImportSummary,
   buildLegacyWorkbook,
@@ -407,7 +407,7 @@ export default function LegacyWorkbookSync() {
                         label="Roll back import"
                       />
                       <span className="text-muted">
-                        {canRollback(card.rollbackUntilMs) ? `Until ${formatImportTimestamp(card.rollbackUntilMs)}` : '30-day window expired'}
+                        {canRollback(card.rollbackUntilMs) ? `Until ${formatImportTimestamp(card.rollbackUntilMs)}` : `${ROLLBACK_WINDOW_DAYS}-day window expired`}
                       </span>
                     </div>
                   ) : (
