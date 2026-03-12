@@ -11,7 +11,7 @@ The codebase is intentionally simple. Keep changes aligned with the existing cli
 - The implemented app is client-only: React + webpack + Firebase Hosting/Auth/Firestore/Storage.
 - There are no Cloud Functions, API routes, backend services, or server-side CSV processors in this repo.
 - The product brief in [`specs/NCP_ADK_KPI_Automation_Product_Brief.md`](/Users/nathanpayne/GitHub/device-platform-reporting/specs/NCP_ADK_KPI_Automation_Product_Brief.md) is partly aspirational. Treat the source code as the real behavior.
-- `npm test` is a placeholder that prints `no tests`. Do not assume test coverage exists.
+- `npm test` runs the current Jest suite plus a tracked-file secret scan. Coverage is still selective, not comprehensive.
 
 ## Stack
 
