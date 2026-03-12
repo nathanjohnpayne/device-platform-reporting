@@ -1,6 +1,12 @@
 node_modules/
 dist/
+coverage/
 .DS_Store
 .env.local
+.env
 .env.*
 !.env.example
+*.key
+service-account.json
+firebase-adminsdk*.json
+RIPCUT_GUIDE.md

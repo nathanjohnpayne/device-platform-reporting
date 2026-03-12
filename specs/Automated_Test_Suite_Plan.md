@@ -13,7 +13,8 @@ The goal is to add confidence without redesigning the app into a different archi
 
 ## Current State
 
-- `npm test` is still a placeholder and no automated tests run in CI.
+- `npm test` now runs the first Jest suite for `importHistory`, `looker`, `partnerRegionMapping`, `regionalEstimates`, plus initial DOM behavior coverage for `UploadZone` and `PlatformKpis`.
+- No automated tests run in CI yet.
 - The most failure-prone logic lives in pure data transforms, not in styling.
 - Several workflows depend on provider exports that are easy to regress:
   - Conviva playback parsing
@@ -154,7 +155,7 @@ To make browser tests practical, add a small auth seam in a follow-up change. Th
 - add Jest + RTL infrastructure
 - add fixture directories
 - cover `reporting`, `conviva`, `playback`, `adk`, `partnerRegionMapping`, and `importHistory`
-- replace `npm test` placeholder with the real unit/component runner
+- expand the now-live `npm test` runner beyond the initial utility coverage
 
 Exit criteria:
 

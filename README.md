@@ -182,23 +182,24 @@ legacyWorkbookSheets/  — Sheet-level historical workbook baseline used for exp
 ## Verification
 
 ```bash
+npm test
 npm run build
 ```
 
 Notes:
-- `npm test` is currently a placeholder (`echo no tests`).
-- The automated test suite plan lives in [`specs/Automated_Test_Suite_Plan.md`](./specs/Automated_Test_Suite_Plan.md).
+- `npm test` now runs Jest coverage for the core utility layer plus initial DOM tests for `UploadZone` and `PlatformKpis`.
+- The broader rollout plan still lives in [`specs/Automated_Test_Suite_Plan.md`](./specs/Automated_Test_Suite_Plan.md).
 - Production builds currently emit webpack bundle-size warnings, but they complete successfully.
 
 ---
 
 ## Automated testing roadmap
 
-This repo does not yet ship an automated test harness, but the planned rollout is now documented in [`specs/Automated_Test_Suite_Plan.md`](./specs/Automated_Test_Suite_Plan.md).
+This repo now ships a small automated unit test harness, and the remaining rollout is documented in [`specs/Automated_Test_Suite_Plan.md`](./specs/Automated_Test_Suite_Plan.md).
 
 Summary:
-- Start with Jest + React Testing Library because the app already uses Babel and webpack.
-- Cover pure parsing and reporting utilities first (`reporting`, `conviva`, `playback`, `looker`, `regionalEstimates`, `legacyWorkbooks`, `importHistory`).
+- Start with Jest because the app already uses Babel and webpack.
+- The current suite covers the highest-risk pure utilities first (`importHistory`, `looker`, `partnerRegionMapping`, `regionalEstimates`) and now includes initial DOM behavior coverage for `UploadZone` and `PlatformKpis`.
 - Add page-level workflow tests next with mocked Firebase modules.
 - Add a small Playwright smoke suite only after the fast test layer is stable, ideally against Firebase emulators or a test-only auth seam instead of live Google Sign-In.
 
