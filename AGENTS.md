@@ -34,10 +34,24 @@ The codebase is intentionally simple. Keep changes aligned with the existing cli
 
 - Firebase initialization lives in [`src/firebase.js`](/Users/nathanpayne/GitHub/device-platform-reporting/src/firebase.js).
 - The app expects `REACT_APP_FIREBASE_*` variables for at least `API_KEY`, `APP_ID`, and `MEASUREMENT_ID`.
-- Use [`.env.example`](/Users/nathanpayne/GitHub/device-platform-reporting/.env.example) as the starting point for local Firebase config.
+- Use [`.env.example`](/Users/nathanpayne/GitHub/device-platform-reporting/.env.example) as the starting point, then copy it to a local `.env` file (gitignored).
+- Webpack reads `REACT_APP_FIREBASE_*` from the shell at build time. Source/export `.env` before `npm start`, `npm run build`, or `firebase deploy`.
 - Allowed login domains are enforced in both client code and Firebase rules:
   - `disney.com`
   - `disneystreaming.com`
+
+## Credential Hygiene And Rotation
+
+- Keep real Firebase web config only in local `.env` files. Do not hardcode live values in [`src/firebase.js`](/Users/nathanpayne/GitHub/device-platform-reporting/src/firebase.js), docs, or generated bundles.
+- `REACT_APP_FIREBASE_API_KEY` is a browser key, not the auth boundary, but committing it to tracked source is still a security concern. Public repos and cached bundles trigger Google abuse alerts, create noisy quota exposure, and force incident response.
+- Keep browser-key restrictions enabled in Google Cloud Credentials: HTTP referrers for the approved Hosting/local domains plus the Firebase API allowlist.
+
+Rotation playbook:
+1. Remove the exposed value from tracked files and build artifacts.
+2. If it was public, rewrite git history and force-push before making the repo public again.
+3. Create a replacement browser key in Google Cloud Credentials with the same restrictions.
+4. Update local `.env`, source it in the shell, then rebuild and redeploy.
+5. Verify the live bundle serves the new key only, then delete the old key.
 
 ## Repo Map
 

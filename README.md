@@ -53,10 +53,10 @@ npm install
 ### 3. Add Firebase config
 
 ```
-cp .env.example .env.local
+cp .env.example .env
 ```
 
-Open `.env.local` and fill in your values from:  
+Open `.env` and fill in your values from:
 **Firebase Console → Project Settings → General → Your apps → SDK setup → Config**
 
 Required values:
@@ -65,6 +65,7 @@ Required values:
 - `REACT_APP_FIREBASE_MEASUREMENT_ID`
 
 The other values (auth domain, project ID, etc.) are pre-filled for `device-platform-reporting`.
+`.env` is gitignored. Keep real values there, not in tracked source files.
 
 ### 4. Enable Firestore
 
@@ -77,6 +78,9 @@ Firebase Console → Storage → Get started → Production mode.
 ### 6. Build and deploy
 
 ```bash
+set -a
+source .env
+set +a
 npm run build
 firebase login
 firebase deploy
@@ -89,6 +93,9 @@ The app will be live at: `https://device-platform-reporting.web.app`
 ## Local development
 
 ```bash
+set -a
+source .env
+set +a
 npm start
 # → http://localhost:3000
 ```
@@ -218,6 +225,13 @@ npm test
 - Domain enforcement happens both in the Firebase Auth layer (client-side) and in Firestore security rules (server-side).
 - Auto-saved workflow imports, legacy workbook baselines, and rollback metadata are creator-owned for delete/rollback paths. The shared 90-day rollback window is enforced from Firestore server timestamps.
 - No data is publicly readable.
+
+### Firebase web config hygiene
+
+- The Firebase Web API key is not the auth boundary, but it still should not live in tracked source or public bundles longer than necessary. Public exposure creates abuse and alerting risk.
+- Keep live Firebase values in local `.env` only. [`src/firebase.js`](/Users/nathanpayne/GitHub/device-platform-reporting/src/firebase.js) should contain code paths and defaults, not real keys.
+- Keep browser-key restrictions enabled in Google Cloud Credentials.
+- If the key is exposed: remove it from source/history, create a replacement key with the same referrer/API restrictions, update `.env`, source the file, rebuild/redeploy, verify the live bundle, then delete the old key.
 
 ---
 
