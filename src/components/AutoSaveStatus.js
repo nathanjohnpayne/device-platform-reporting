@@ -23,6 +23,10 @@ function renderMessage(status, importedAtMs, rollbackUntilMs, error) {
     return 'This import was rolled back. Upload the file again if you need to restore it.';
   }
 
+  if (status === 'conflict') {
+    return 'A snapshot for this time period already exists. Choose how to proceed below.';
+  }
+
   if (status === 'error') {
     return error || 'Automatic save failed.';
   }
@@ -47,6 +51,7 @@ export default function AutoSaveStatus({
     rollingBack: 'alert-warning',
     saved: 'alert-success',
     duplicate: 'alert-warning',
+    conflict: 'alert-warning',
     rolledBack: 'alert-info',
     error: 'alert-error',
   }[status] || 'alert-info';

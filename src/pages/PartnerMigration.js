@@ -1,6 +1,9 @@
 import React, { useEffect, useState } from 'react';
-import { collection, getDocs } from 'firebase/firestore';
+import { collection, getDocs, limit, orderBy, query } from 'firebase/firestore';
 import AutoSaveStatus from '../components/AutoSaveStatus';
+import ConfluenceCopyButtons from '../components/ConfluenceCopyButtons';
+import ConflictDialog from '../components/ConflictDialog';
+import MissingDataGuidance from '../components/MissingDataGuidance';
 import UploadZone from '../components/UploadZone';
 import { db } from '../firebase';
 import useAutoImport from '../hooks/useAutoImport';
@@ -53,7 +56,6 @@ export default function PartnerMigration() {
   const [uploadMeta, setUploadMeta] = useState({ rawHeaders: [], sourceFileName: '' });
   const [adkMap, setAdkMap] = useState({});
   const [currentGa, setCurrentGa] = useState('Unknown');
-  const [copied, setCopied] = useState(false);
   const [versionsLoaded, setVersionsLoaded] = useState(false);
   const [importGeneration, setImportGeneration] = useState(0);
   const [importConfig, setImportConfig] = useState({
@@ -64,6 +66,8 @@ export default function PartnerMigration() {
     minDevices: 100,
     legacyAlertPct: 0,
   });
+  const [missingPriorWeek, setMissingPriorWeek] = useState(null);
+  const [guidanceDismissed, setGuidanceDismissed] = useState(false);
 
   useEffect(() => {
     getDocs(collection(db, 'adkVersions'))
@@ -77,6 +81,25 @@ export default function PartnerMigration() {
         setVersionsLoaded(true);
         console.error(error);
       });
+
+    // Detect missing prior week for MoM guidance
+    getDocs(query(collection(db, 'partnerMigration'), orderBy('weekOf', 'desc'), limit(2)))
+      .then((snap) => {
+        const docs = snap.docs.map((d) => d.data());
+        if (docs.length < 2) {
+          const latestWeek = docs[0]?.weekOf || '';
+          if (latestWeek) {
+            const d = new Date(latestWeek);
+            d.setDate(d.getDate() - 7);
+            setMissingPriorWeek(d.toISOString().slice(0, 10));
+          } else {
+            setMissingPriorWeek('the prior week');
+          }
+        } else {
+          setMissingPriorWeek(null);
+        }
+      })
+      .catch(console.error);
   }, []);
 
   const partners = buildPartnerSummary(data, adkMap, currentGa, config.minDevices);
@@ -104,6 +127,8 @@ export default function PartnerMigration() {
           rawRows: data,
         },
         sourceFiles: uploadMeta.sourceFileName ? [uploadMeta.sourceFileName] : [],
+        periodField: 'weekOf',
+        periodKey: weekOf,
         summary: {
           weekOf,
           rowCount: data.length,
@@ -131,10 +156,11 @@ export default function PartnerMigration() {
       .join('\n');
   };
 
-  const copy = () => {
-    navigator.clipboard.writeText(generateNotes());
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
+  // generateMarkdownNotes wraps each line as a markdown list item
+  const generateMarkdownNotes = () => {
+    const plain = generateNotes();
+    if (!plain) return '';
+    return plain.split('\n').filter(Boolean).map((line) => `- ${line}`).join('\n');
   };
 
   return (
@@ -203,6 +229,24 @@ export default function PartnerMigration() {
         />
       )}
 
+      {autoSave.status === 'conflict' && autoSave.conflictData && (
+        <ConflictDialog
+          existingSnapshot={autoSave.conflictData.existingSnapshot}
+          newSnapshotRequest={autoSave.conflictData.newSnapshotRequest}
+          onKeep={() => autoSave.resolveConflict('keep')}
+          onReplace={() => autoSave.resolveConflict('replace')}
+          busy={autoSave.conflictResolving}
+        />
+      )}
+
+      {partners.length > 0 && missingPriorWeek && !guidanceDismissed && (
+        <MissingDataGuidance
+          source="sentry"
+          missingPeriod={missingPriorWeek}
+          onDismiss={() => setGuidanceDismissed(true)}
+        />
+      )}
+
       {partners.length > 0 && (
         <>
           <div className="kpi-grid kpi-grid-3" style={{ marginBottom: 20 }}>
@@ -263,9 +307,12 @@ export default function PartnerMigration() {
           <div className="card">
             <div className="card-title">📝 Confluence Notes</div>
             <div className="card-subtitle">Paste into the "Partners Not Fully Migrated" notes in the weekly report.</div>
-            <div className="output-preview">{generateNotes()}</div>
-            <div className="output-actions">
-              <button className="btn btn-primary" onClick={copy}>{copied ? '✅ Copied!' : '📋 Copy Notes'}</button>
+            <ConfluenceCopyButtons
+              textContent={generateNotes()}
+              markdownContent={generateMarkdownNotes()}
+            />
+            <div className="output-preview" style={{ whiteSpace: 'pre-wrap', fontFamily: "'SF Mono', 'Courier New', monospace", fontSize: 12, color: '#94a3b8' }}>
+              {generateNotes()}
             </div>
           </div>
         </>

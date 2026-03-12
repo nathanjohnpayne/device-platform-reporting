@@ -1,8 +1,8 @@
-import { collection, doc, getDoc, getDocFromServer, runTransaction, serverTimestamp, writeBatch } from 'firebase/firestore';
+import { collection, doc, getDoc, getDocs, getDocFromServer, query, runTransaction, serverTimestamp, updateDoc, where, writeBatch } from 'firebase/firestore';
 import { auth, db } from '../firebase';
 
-// Shared policy: recent imports stay user-reversible for 30 days.
-export const ROLLBACK_WINDOW_DAYS = 30;
+// Shared policy: recent imports stay user-reversible for 90 days.
+export const ROLLBACK_WINDOW_DAYS = 90;
 export const ROLLBACK_WINDOW_MS = ROLLBACK_WINDOW_DAYS * 24 * 60 * 60 * 1000;
 
 function normalizeForHash(value) {
@@ -115,6 +115,36 @@ function hydrateBatch(batchId, batchData = {}) {
   };
 }
 
+export async function checkPeriodConflict(collectionName, periodField, periodKey) {
+  const snap = await getDocs(
+    query(collection(db, collectionName), where(periodField, '==', periodKey))
+  );
+
+  const active = snap.docs
+    .map((d) => ({ id: d.id, ...d.data() }))
+    .filter((d) => !d.supersededAt);
+
+  return active.length > 0 ? active[0] : null;
+}
+
+export async function replaceImportSnapshot({
+  existingCollectionName,
+  existingSnapshotId,
+  existingBatchId,
+  newRequest,
+}) {
+  // Soft-delete the existing snapshot and its batch
+  await Promise.all([
+    updateDoc(doc(db, existingCollectionName, existingSnapshotId), { supersededAt: serverTimestamp() }),
+    existingBatchId
+      ? updateDoc(doc(db, 'importBatches', existingBatchId), { supersededAt: serverTimestamp() })
+      : Promise.resolve(),
+  ]);
+
+  // Save the new snapshot, bypassing period check
+  return saveImportSnapshot({ ...newRequest, _skipPeriodCheck: true });
+}
+
 export async function saveImportSnapshot({
   type,
   label,
@@ -123,7 +153,21 @@ export async function saveImportSnapshot({
   fingerprintData,
   sourceFiles = [],
   summary = {},
+  periodKey,
+  periodField,
+  _skipPeriodCheck = false,
 }) {
+  // Period conflict check (must run before SHA-256 dedup)
+  if (!_skipPeriodCheck && periodKey && periodField) {
+    const existing = await checkPeriodConflict(collectionName, periodField, periodKey);
+    if (existing) {
+      return {
+        status: 'conflict',
+        existingSnapshot: existing,
+      };
+    }
+  }
+
   const normalizedSourceFiles = [...new Set((sourceFiles || []).filter(Boolean))].sort();
   const batchId = await buildImportBatchId(type, fingerprintData);
   const batchRef = doc(db, 'importBatches', batchId);

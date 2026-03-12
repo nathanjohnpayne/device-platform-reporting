@@ -15,6 +15,7 @@ import AdkVersionManager from './pages/AdkVersionManager';
 import PartnerRegionMapping from './pages/PartnerRegionMapping';
 import History from './pages/History';
 import LegacyWorkbookSync from './pages/LegacyWorkbookSync';
+import SnapshotDetail from './pages/SnapshotDetail';
 import './styles.css';
 
 function PageTitle({ title }) {
@@ -76,6 +77,7 @@ function AppShell() {
             <Route path="/adk-versions"          element={<AdkVersionManager />} />
             <Route path="/partner-region-mapping" element={<PartnerRegionMapping />} />
             <Route path="/history"               element={<History />} />
+            <Route path="/history/:collection/:snapshotId" element={<SnapshotDetail />} />
             <Route path="/legacy-sync"           element={<LegacyWorkbookSync />} />
             <Route path="*"                      element={<Navigate to="/" replace />} />
           </Routes>

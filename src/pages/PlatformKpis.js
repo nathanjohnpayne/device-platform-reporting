@@ -9,12 +9,16 @@ import {
   LineChart,
   Pie,
   PieChart,
-  ResponsiveContainer,
   Tooltip,
   XAxis,
   YAxis,
 } from 'recharts';
 import AutoSaveStatus from '../components/AutoSaveStatus';
+import ChartWrapper from '../components/ChartWrapper';
+import ConfluenceCopyButtons from '../components/ConfluenceCopyButtons';
+import ConfluencePreview from '../components/ConfluencePreview';
+import ConflictDialog from '../components/ConflictDialog';
+import MissingDataGuidance from '../components/MissingDataGuidance';
 import UploadZone from '../components/UploadZone';
 import { db } from '../firebase';
 import useAutoImport from '../hooks/useAutoImport';
@@ -38,6 +42,8 @@ import {
   formatChange,
   formatDateLabel,
   getChangeClass,
+  htmlToMarkdown,
+  htmlToPlainText,
   parseNumber,
   toPercentChange,
 } from '../utils/reporting';
@@ -144,7 +150,6 @@ function formatMixValue(value) {
 export default function PlatformKpis() {
   const [uploads, setUploads] = useState({ mau: null, mad: null, hrs: null });
   const [chartMetric, setChartMetric] = useState('mau');
-  const [copied, setCopied] = useState(false);
   const [uploadSources, setUploadSources] = useState({});
   const [regionalInputs, setRegionalInputs] = useState(createEmptyRegionalInputs);
   const [importGeneration, setImportGeneration] = useState(0);
@@ -155,6 +160,8 @@ export default function PlatformKpis() {
   const [mappingError, setMappingError] = useState('');
   const [partnerMappings, setPartnerMappings] = useState([]);
   const [mappingMeta, setMappingMeta] = useState(null);
+  const [missingPriorMonth, setMissingPriorMonth] = useState(null);
+  const [guidanceDismissed, setGuidanceDismissed] = useState(false);
 
   const loadSavedHistory = async () => {
     setHistoryLoading(true);
@@ -173,8 +180,28 @@ export default function PlatformKpis() {
         })
         .filter(Boolean);
 
-      setSavedSeriesByPlatform(mergeMonthlySeries(...platformSeries));
+      const mergedPlatform = mergeMonthlySeries(...platformSeries);
+      setSavedSeriesByPlatform(mergedPlatform);
       setSavedSeriesByRegion(mergeMonthlySeries(...regionalSeries));
+
+      // Detect missing prior month for MoM guidance
+      const savedMonths = [...new Set(
+        Object.values(mergedPlatform).flatMap((entries) => entries.map((e) => e.month))
+      )].sort();
+      if (savedMonths.length > 0) {
+        const latestSaved = savedMonths[savedMonths.length - 1];
+        const [ly, lm] = latestSaved.split('-').map(Number);
+        const priorMonth = lm === 1
+          ? `${ly - 1}-12`
+          : `${ly}-${String(lm - 1).padStart(2, '0')}`;
+        if (!savedMonths.includes(priorMonth)) {
+          const [py, pm] = priorMonth.split('-').map(Number);
+          const label = new Date(py, pm - 1, 1).toLocaleString('en-US', { month: 'long', year: 'numeric' });
+          setMissingPriorMonth(label);
+        } else {
+          setMissingPriorMonth(null);
+        }
+      }
     } catch (error) {
       console.error(error);
     } finally {
@@ -315,6 +342,8 @@ export default function PlatformKpis() {
           regionalEstimate: currentRegionalEstimate || null,
         },
         sourceFiles,
+        periodField: 'month',
+        periodKey: month,
         summary: {
           month,
           rowCount: sourceFiles.length,
@@ -402,6 +431,8 @@ export default function PlatformKpis() {
 
     const platformSection = [
       `<h3>Business KPIs / Program KPIs (D+) — ${month}</h3>`,
+      `<!-- [CHART: Platform KPIs — ${month} Trend (MAU/MAD/Hrs)]
+     Paste chart image here. Use Copy Chart button above, then Insert > Image in Confluence. -->`,
       ...summaryRows.map((row) => (
         `${row.entity}: MAU ${compactNumber(row.current.mau, 2)} (${formatChange(row.mauMoM)}) | MAD ${compactNumber(row.current.mad, 2)} (${formatChange(row.madMoM)}) | Playback Hrs ${compactNumber(row.current.hrs, 2)} (${formatChange(row.hrsMoM)}) | HPV ${formatHpv(row.current.hpv)} (${formatChange(row.hpvMoM)})`
       )),
@@ -411,6 +442,8 @@ export default function PlatformKpis() {
 
     const regionalSection = [
       `<h3>Regional KPI Estimates — ${formatDateLabel(currentRegionalEstimate?.month || month)}</h3>`,
+      `<!-- [CHART: Regional KPI Estimates — Estimated MAU Share by Region (pie)]
+     Paste chart image here. Use Copy Chart button above, then Insert > Image in Confluence. -->`,
       `<p><em>${REGIONAL_ESTIMATE_DISCLAIMER} Directly region-coded partners stay assigned to those regions. Global or unmapped partners are distributed proportionally from the observed direct partner mix, which can bias results if the unmapped base behaves differently.</em></p>`,
       ...(currentRegionalEstimate?.fallbackMetrics?.length
         ? [`⚠️ Note: ${currentRegionalEstimate.fallbackMetrics.join(', ')} used equal-split fallback allocation (no direct partner-region matches found).`]
@@ -422,12 +455,6 @@ export default function PlatformKpis() {
     ].join('\n');
 
     return `${platformSection}\n\n${regionalSection}`;
-  };
-
-  const copy = () => {
-    navigator.clipboard.writeText(generateConfluence());
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
   };
 
   const mappingImportedAtMs = timestampToMs(mappingMeta?.importedAt);
@@ -496,6 +523,14 @@ export default function PlatformKpis() {
             ✅ Platform KPIs loaded for {summaryRows[0]?.month}. MAU, MAD, Playback Hours, and HPV are merged across the monthly Looker exports.
           </div>
 
+          {missingPriorMonth && !guidanceDismissed && (
+            <MissingDataGuidance
+              source="looker"
+              missingPeriod={missingPriorMonth}
+              onDismiss={() => setGuidanceDismissed(true)}
+            />
+          )}
+
           <AutoSaveStatus
             label={workflowLabel}
             status={regionalWaitsForMappings ? 'saving' : autoSave.status}
@@ -504,6 +539,16 @@ export default function PlatformKpis() {
             rollbackUntilMs={autoSave.rollbackUntilMs}
             onRollback={autoSave.rollback}
           />
+
+          {autoSave.status === 'conflict' && autoSave.conflictData && (
+            <ConflictDialog
+              existingSnapshot={autoSave.conflictData.existingSnapshot}
+              newSnapshotRequest={autoSave.conflictData.newSnapshotRequest}
+              onKeep={() => autoSave.resolveConflict('keep')}
+              onReplace={() => autoSave.resolveConflict('replace')}
+              busy={autoSave.conflictResolving}
+            />
+          )}
 
           <div className="card">
             <div className="flex-between" style={{ marginBottom: 16 }}>
@@ -524,7 +569,7 @@ export default function PlatformKpis() {
               </div>
             </div>
 
-            <ResponsiveContainer width="100%" height={260}>
+            <ChartWrapper title={`Platform KPIs — ${month} Trend (${CHART_METRICS.find((m) => m.key === chartMetric)?.label})`} height={260}>
               <LineChart data={trendData}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
                 <XAxis dataKey="label" tick={{ fontSize: 10 }} />
@@ -535,7 +580,7 @@ export default function PlatformKpis() {
                   <Line key={platform} type="monotone" dataKey={platform} stroke={PLATFORM_COLORS[platform]} strokeWidth={2} dot={false} />
                 ))}
               </LineChart>
-            </ResponsiveContainer>
+            </ChartWrapper>
           </div>
 
           <div className="card">
@@ -668,7 +713,7 @@ export default function PlatformKpis() {
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: 20 }}>
                   <div className="card" style={{ marginBottom: 0 }}>
                     <div className="card-title">🥧 Estimated MAU Share by Region</div>
-                    <ResponsiveContainer width="100%" height={260}>
+                    <ChartWrapper title="Regional KPI Estimates — Estimated MAU Share by Region" height={260}>
                       <PieChart>
                         <Pie
                           data={regionalPieData}
@@ -685,7 +730,7 @@ export default function PlatformKpis() {
                         <Tooltip formatter={(value) => compactNumber(value, 2)} />
                         <Legend wrapperStyle={{ fontSize: 12 }} />
                       </PieChart>
-                    </ResponsiveContainer>
+                    </ChartWrapper>
                   </div>
 
                   <div className="card" style={{ marginBottom: 0 }}>
@@ -757,10 +802,11 @@ export default function PlatformKpis() {
           <div className="card">
             <div className="card-title">🚀 Confluence Output</div>
             <div className="card-subtitle">Includes the platform section and, when available, the regional estimation section with the model disclaimer.</div>
-            <div className="output-preview">{generateConfluence()}</div>
-            <div className="output-actions">
-              <button className="btn btn-primary" onClick={copy}>{copied ? '✅ Copied!' : '📋 Copy to Clipboard'}</button>
-            </div>
+            <ConfluenceCopyButtons
+              textContent={htmlToPlainText(generateConfluence())}
+              markdownContent={htmlToMarkdown(generateConfluence())}
+            />
+            <ConfluencePreview content={generateConfluence()} />
           </div>
         </>
       )}

@@ -36,7 +36,7 @@ service cloud.firestore {
 
     function withinRollbackWindow(fieldName) {
       return fieldName is timestamp
-        && request.time < fieldName + duration.value(30, 'd');
+        && request.time < fieldName + duration.value(90, 'd');
     }
 
     match /adkVersions/{document} {
@@ -57,30 +57,40 @@ service cloud.firestore {
     match /weeklySnapshots/{document} {
       allow read: if isAllowedUser();
       allow create: if requestOwnsDocument() && createUsesServerTimestamp(request.resource.data.uploadedAt);
+      allow update: if resourceOwnedByCaller()
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['supersededAt']);
       allow delete: if resourceOwnedByCaller() && withinRollbackWindow(resource.data.uploadedAt);
     }
 
     match /adkVersionShare/{document} {
       allow read: if isAllowedUser();
       allow create: if requestOwnsDocument() && createUsesServerTimestamp(request.resource.data.uploadedAt);
+      allow update: if resourceOwnedByCaller()
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['supersededAt']);
       allow delete: if resourceOwnedByCaller() && withinRollbackWindow(resource.data.uploadedAt);
     }
 
     match /partnerMigration/{document} {
       allow read: if isAllowedUser();
       allow create: if requestOwnsDocument() && createUsesServerTimestamp(request.resource.data.uploadedAt);
+      allow update: if resourceOwnedByCaller()
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['supersededAt']);
       allow delete: if resourceOwnedByCaller() && withinRollbackWindow(resource.data.uploadedAt);
     }
 
     match /monthlySnapshots/{document} {
       allow read: if isAllowedUser();
       allow create: if requestOwnsDocument() && createUsesServerTimestamp(request.resource.data.uploadedAt);
+      allow update: if resourceOwnedByCaller()
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['supersededAt']);
       allow delete: if resourceOwnedByCaller() && withinRollbackWindow(resource.data.uploadedAt);
     }
 
     match /importBatches/{document} {
       allow read: if isAllowedUser();
       allow create: if requestOwnsDocument() && createUsesServerTimestamp(request.resource.data.uploadedAt);
+      allow update: if resourceOwnedByCaller()
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['supersededAt']);
       allow delete: if resourceOwnedByCaller() && withinRollbackWindow(resource.data.uploadedAt);
     }
 

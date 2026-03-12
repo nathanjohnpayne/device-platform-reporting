@@ -1,153 +1,33 @@
 import React, { useState } from 'react';
-import { CartesianGrid, Legend, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
+import { CartesianGrid, Legend, Line, LineChart, Tooltip, XAxis, YAxis } from 'recharts';
 import AutoSaveStatus from '../components/AutoSaveStatus';
+import ChartWrapper from '../components/ChartWrapper';
+import ConfluenceCopyButtons from '../components/ConfluenceCopyButtons';
+import ConfluencePreview from '../components/ConfluencePreview';
+import ConflictDialog from '../components/ConflictDialog';
 import UploadZone from '../components/UploadZone';
 import useAutoImport from '../hooks/useAutoImport';
 import { parseConvivaPlaybackRows } from '../utils/conviva';
 import {
+  FALLBACK_COLORS,
+  METRIC_ORDER,
+  buildPlaybackAnalysis,
+  formatMetricValue,
+  metricFormatter,
+} from '../utils/playback';
+import {
   classifyMetric,
-  compactNumber,
-  compareDateValues,
   formatChange,
-  formatDateLabel,
-  formatPercent,
   getChangeClass,
-  guessDateKey,
+  htmlToMarkdown,
+  htmlToPlainText,
   humanizeMetric,
-  normalizeDateValue,
   parseNumber,
   toPercentChange,
 } from '../utils/reporting';
 
-const METRIC_ORDER = ['attempts', 'uniqueDevices', 'vsf', 'vpf'];
-const FALLBACK_COLORS = ['#3b82f6', '#1e3a8a', '#f59e0b', '#7c3aed', '#ec4899', '#10b981', '#14b8a6', '#f97316'];
-
-function formatSeriesLabel(key) {
-  const cleaned = String(key)
-    .replace(/vsf-?t?/ig, '')
-    .replace(/vpf-?t?/ig, '')
-    .replace(/unique devices with attempts/ig, '')
-    .replace(/unique devices/ig, '')
-    .replace(/attempts/ig, '')
-    .replace(/\bvalue\b/ig, '')
-    .replace(/[|:_-]+/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim();
-
-  return cleaned || key;
-}
-
-function formatMetricValue(metric, value) {
-  if (value == null) return '—';
-  if (metric === 'vsf' || metric === 'vpf') return formatPercent(value, 2);
-  return compactNumber(value, 1);
-}
-
-function buildPlaybackAnalysis(rows, config) {
-  if (!rows?.length) return { chartData: [], metricSeries: {}, narrative: [], latestLabel: '', latestPoints: {} };
-
-  const dateKey = guessDateKey(rows[0]);
-  const numericKeys = Object.keys(rows[0]).filter((key) => rows.some((row) => parseNumber(row[key]) != null));
-  const metricSeries = { attempts: [], uniqueDevices: [], vsf: [], vpf: [] };
-
-  numericKeys.forEach((key) => {
-    const metric = classifyMetric(key);
-    if (!metric) return;
-    metricSeries[metric].push({ key, label: formatSeriesLabel(key) });
-  });
-
-  const chartData = rows
-    .map((row, index) => {
-      const rawDate = dateKey ? row[dateKey] : '';
-      const date = normalizeDateValue(rawDate) || `point-${String(index + 1).padStart(2, '0')}`;
-      const entry = {
-        date,
-        label: rawDate ? formatDateLabel(rawDate) : `Point ${index + 1}`,
-      };
-
-      numericKeys.forEach((key) => {
-        const value = parseNumber(row[key]);
-        if (value != null) entry[key] = value;
-      });
-
-      return entry;
-    })
-    .sort((left, right) => compareDateValues(left.date, right.date));
-
-  const latest = chartData[chartData.length - 1] || {};
-  const previous = chartData[chartData.length - 2] || {};
-  const latestLabel = latest.label || 'latest';
-  const latestPoints = {};
-  const narrative = [];
-
-  ['vsf', 'vpf'].forEach((metric) => {
-    const ranked = metricSeries[metric]
-      .map((series) => ({ ...series, value: latest[series.key] }))
-      .filter((series) => series.value != null)
-      .sort((left, right) => right.value - left.value);
-
-    if (!ranked.length) return;
-
-    const leader = ranked[0];
-    latestPoints[metric] = leader;
-    narrative.push(`Highest ${humanizeMetric(metric)} on ${latestLabel}: ${leader.label} at ${formatMetricValue(metric, leader.value)}.`);
-
-    const threshold = metric === 'vsf' ? config.vsfThreshold : config.vpfThreshold;
-    const underTarget = ranked.filter((series) => series.value < threshold);
-    if (underTarget.length) {
-      const worst = underTarget[underTarget.length - 1];
-      narrative.push(`${humanizeMetric(metric)} below target (${formatPercent(threshold, 1)}) on ${worst.label}: ${formatMetricValue(metric, worst.value)}. Needs investigation.`);
-    }
-  });
-
-  ['attempts', 'uniqueDevices'].forEach((metric) => {
-    const ranked = metricSeries[metric]
-      .map((series) => ({ ...series, value: latest[series.key] }))
-      .filter((series) => series.value != null)
-      .sort((left, right) => right.value - left.value);
-
-    if (!ranked.length) return;
-    const leader = ranked[0];
-    latestPoints[metric] = leader;
-    narrative.push(`Largest ${humanizeMetric(metric)} on ${latestLabel}: ${leader.label} with ${formatMetricValue(metric, leader.value)}.`);
-  });
-
-  const anomalies = METRIC_ORDER.flatMap((metric) => (
-    metricSeries[metric]
-      .map((series) => {
-        const current = latest[series.key];
-        const prior = previous[series.key];
-        const change = toPercentChange(current, prior);
-        if (change == null || Math.abs(change) < config.anomalyThreshold) return null;
-        return {
-          metric,
-          label: series.label,
-          change,
-          current,
-          prior,
-        };
-      })
-      .filter(Boolean)
-  )).sort((left, right) => Math.abs(right.change) - Math.abs(left.change));
-
-  if (anomalies.length) {
-    anomalies.slice(0, 3).forEach((anomaly) => {
-      narrative.push(`${anomaly.label} ${humanizeMetric(anomaly.metric)} moved ${formatChange(anomaly.change, 1)} versus the prior data point (${formatMetricValue(anomaly.metric, anomaly.prior)} → ${formatMetricValue(anomaly.metric, anomaly.current)}).`);
-    });
-  } else if (chartData.length > 1) {
-    narrative.push(`No week-over-week anomalies exceeded the ${formatPercent(config.anomalyThreshold, 1)} change threshold.`);
-  }
-
-  return { chartData, metricSeries, narrative, latestLabel, latestPoints };
-}
-
-function metricFormatter(metric, value) {
-  return metric === 'vsf' || metric === 'vpf' ? formatPercent(value, 2) : compactNumber(value, 1);
-}
-
 export default function PlaybackPerformance() {
   const [data, setData] = useState(null);
-  const [copied, setCopied] = useState(false);
   const [importGeneration, setImportGeneration] = useState(0);
   const [importMeta, setImportMeta] = useState({
     sourceFiles: [],
@@ -183,6 +63,8 @@ export default function PlaybackPerformance() {
           rows: data,
         },
         sourceFiles: importMeta.sourceFiles,
+        periodField: 'weekOf',
+        periodKey: weekOf,
         summary: {
           weekOf,
           rowCount: data.length,
@@ -229,7 +111,9 @@ export default function PlaybackPerformance() {
         const lines = analysis.metricSeries[metric]
           .map((series) => `<li>${series.label}: <strong>${formatMetricValue(metric, analysis.chartData[analysis.chartData.length - 1]?.[series.key])}</strong></li>`)
           .join('');
-        return `<h4>${humanizeMetric(metric)} (${analysis.latestLabel})</h4><ul>${lines}</ul>`;
+        return `<h4>${humanizeMetric(metric)} (${analysis.latestLabel})</h4><ul>${lines}</ul>
+<!-- [CHART: Playback Performance — ${humanizeMetric(metric)} (30-day trend)]
+     Paste chart image here. Use Copy Chart button above, then Insert > Image in Confluence. -->`;
       })
       .join('\n');
 
@@ -239,12 +123,6 @@ export default function PlaybackPerformance() {
 <p>Latest data point: ${analysis.latestLabel}</p>
 <ul>${narrative}</ul>
 ${sections}`;
-  };
-
-  const copy = () => {
-    navigator.clipboard.writeText(generateConfluence());
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
   };
 
   return (
@@ -317,6 +195,16 @@ ${sections}`;
             onRollback={autoSave.rollback}
           />
 
+          {autoSave.status === 'conflict' && autoSave.conflictData && (
+            <ConflictDialog
+              existingSnapshot={autoSave.conflictData.existingSnapshot}
+              newSnapshotRequest={autoSave.conflictData.newSnapshotRequest}
+              onKeep={() => autoSave.resolveConflict('keep')}
+              onReplace={() => autoSave.resolveConflict('replace')}
+              busy={autoSave.conflictResolving}
+            />
+          )}
+
           <div className="card">
             <div className="card-title">📝 Narrative Summary</div>
             <div className="card-subtitle">Templated bullets for the weekly Confluence page.</div>
@@ -329,7 +217,7 @@ ${sections}`;
             <div key={metric} className="card">
               <div className="card-title">📈 {humanizeMetric(metric)}</div>
               <div className="card-subtitle">Latest point: {analysis.latestLabel}</div>
-              <ResponsiveContainer width="100%" height={280}>
+              <ChartWrapper title={`Playback Performance — ${humanizeMetric(metric)}`} height={280}>
                 <LineChart data={analysis.chartData} margin={{ top: 5, right: 20, bottom: 5, left: 0 }}>
                   <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
                   <XAxis dataKey="label" tick={{ fontSize: 11 }} minTickGap={18} />
@@ -340,7 +228,7 @@ ${sections}`;
                     <Line key={series.key} type="monotone" dataKey={series.key} stroke={FALLBACK_COLORS[index % FALLBACK_COLORS.length]} strokeWidth={2} dot={false} name={series.label} />
                   ))}
                 </LineChart>
-              </ResponsiveContainer>
+              </ChartWrapper>
             </div>
           ))}
 
@@ -378,10 +266,11 @@ ${sections}`;
           <div className="card">
             <div className="card-title">🚀 Confluence Output</div>
             <div className="card-subtitle">Copy this block into the Playback Performance section of the weekly Confluence page.</div>
-            <div className="output-preview">{generateConfluence()}</div>
-            <div className="output-actions">
-              <button className="btn btn-primary" onClick={copy}>{copied ? '✅ Copied!' : '📋 Copy to Clipboard'}</button>
-            </div>
+            <ConfluenceCopyButtons
+              textContent={htmlToPlainText(generateConfluence())}
+              markdownContent={htmlToMarkdown(generateConfluence())}
+            />
+            <ConfluencePreview content={generateConfluence()} />
           </div>
         </>
       )}
