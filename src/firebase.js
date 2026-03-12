@@ -10,7 +10,6 @@ import { getStorage } from 'firebase/storage';
 import { getAnalytics, isSupported as isAnalyticsSupported } from 'firebase/analytics';
 
 const DEFAULT_FIREBASE_CONFIG = {
-  apiKey: 'REDACTED_FIREBASE_API_KEY',
   authDomain: 'device-platform-reporting.firebaseapp.com',
   projectId: 'device-platform-reporting',
   storageBucket: 'device-platform-reporting.firebasestorage.app',
@@ -20,7 +19,7 @@ const DEFAULT_FIREBASE_CONFIG = {
 };
 
 const firebaseConfig = {
-  apiKey: process.env.REACT_APP_FIREBASE_API_KEY || DEFAULT_FIREBASE_CONFIG.apiKey,
+  apiKey: process.env.REACT_APP_FIREBASE_API_KEY || '',
   authDomain: process.env.REACT_APP_FIREBASE_AUTH_DOMAIN || DEFAULT_FIREBASE_CONFIG.authDomain,
   projectId: process.env.REACT_APP_FIREBASE_PROJECT_ID || DEFAULT_FIREBASE_CONFIG.projectId,
   storageBucket: process.env.REACT_APP_FIREBASE_STORAGE_BUCKET || DEFAULT_FIREBASE_CONFIG.storageBucket,
@@ -28,6 +27,10 @@ const firebaseConfig = {
   appId: process.env.REACT_APP_FIREBASE_APP_ID || DEFAULT_FIREBASE_CONFIG.appId,
   measurementId: process.env.REACT_APP_FIREBASE_MEASUREMENT_ID || DEFAULT_FIREBASE_CONFIG.measurementId,
 };
+
+if (!firebaseConfig.apiKey || firebaseConfig.apiKey === 'YOUR_API_KEY') {
+  throw new Error('Missing REACT_APP_FIREBASE_API_KEY. Add it to your local .env before building or deploying.');
+}
 
 const app = initializeApp(firebaseConfig);
 
