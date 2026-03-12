@@ -26,8 +26,8 @@ function normalizeForHash(value) {
       }, {});
   }
 
-  if (typeof value === 'number' && Number.isNaN(value)) {
-    return null;
+  if (typeof value === 'number') {
+    return Number.isFinite(value) ? value : null;
   }
 
   return value;
