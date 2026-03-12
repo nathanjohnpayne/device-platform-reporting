@@ -124,6 +124,10 @@ export async function checkPeriodConflict(collectionName, periodField, periodKey
     .map((d) => ({ id: d.id, ...d.data() }))
     .filter((d) => !d.supersededAt);
 
+  if (active.length > 1) {
+    console.error(`Multiple active snapshots found for ${collectionName}:${periodField}=${periodKey}`);
+  }
+
   return active.length > 0 ? active[0] : null;
 }
 

@@ -100,7 +100,7 @@ function HistoryTable({ title, collectionName, columns }) {
             Replaced uploads ({supersededRows.length})
           </summary>
           <div className="alert alert-info" style={{ margin: '8px 0 4px', fontSize: 12 }}>
-            These snapshots were replaced via "Use new upload" and are kept for 90 days from replacement.
+            These snapshots were replaced via "Use new upload" and are kept for {ROLLBACK_WINDOW_DAYS} days from replacement.
           </div>
           {renderTable(supersededRows, true)}
         </details>
