@@ -1,0 +1,42 @@
+#!/usr/bin/env bash
+# check_no_tool_folder_instructions — Verifies tool config folders contain no plain instruction files.
+# Tool folders: .claude/, .cursor/, .vscode/
+# Allowed in tool folders: machine-generated config and state (e.g. .claude/worktrees/ is Claude Code state).
+# Flagged: plain .md or .txt files that are instruction prose (not machine-generated state).
+# Exit 0 = pass, Exit 1 = fail.
+set -euo pipefail
+
+REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+TOOL_FOLDERS=(".claude" ".cursor" ".vscode")
+FAILED=0
+
+for folder in "${TOOL_FOLDERS[@]}"; do
+  folder_path="$REPO_ROOT/$folder"
+  if [[ ! -d "$folder_path" ]]; then
+    continue
+  fi
+
+  while IFS= read -r -d '' filepath; do
+    filename="$(basename "$filepath")"
+    relpath="${filepath#$REPO_ROOT/}"
+
+    # Exclude .claude/worktrees/ — machine-generated Claude Code isolated repo state
+    if [[ "$relpath" == .claude/worktrees/* ]]; then
+      continue
+    fi
+
+    # Flag plain .md and .txt files as instruction prose
+    if [[ "$filename" == *.md || "$filename" == *.txt ]]; then
+      echo "FAIL: Instruction file found in tool folder: $relpath"
+      FAILED=1
+    fi
+  done < <(find "$folder_path" -type f \( -name "*.md" -o -name "*.txt" \) -print0)
+done
+
+if [[ $FAILED -eq 1 ]]; then
+  echo "check_no_tool_folder_instructions: FAIL"
+  exit 1
+fi
+
+echo "check_no_tool_folder_instructions: PASS"
+exit 0

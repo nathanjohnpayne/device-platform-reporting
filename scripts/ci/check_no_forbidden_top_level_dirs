@@ -1,0 +1,40 @@
+#!/usr/bin/env bash
+# check_no_forbidden_top_level_dirs — Verifies no forbidden top-level directories exist.
+# Exit 0 = pass, Exit 1 = fail.
+set -euo pipefail
+
+REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+FORBIDDEN_DIRS=("src/__mocks__" "vendor" "node_modules/.cache/custom")
+FAILED=0
+
+for dir in "${FORBIDDEN_DIRS[@]}"; do
+  if [[ -d "$REPO_ROOT/$dir" ]]; then
+    echo "FAIL: Forbidden top-level directory exists: $dir"
+    FAILED=1
+  fi
+done
+
+# Check for unexpected top-level directories (not in allowed list)
+ALLOWED_DIRS=(".claude" ".git" "coverage" "dist" "docs" "functions" "node_modules" "plans" "public" "rules" "scripts" "specs" "src" "tests")
+
+while IFS= read -r -d '' dirpath; do
+  dirname="$(basename "$dirpath")"
+  allowed=0
+  for allowed_dir in "${ALLOWED_DIRS[@]}"; do
+    if [[ "$dirname" == "$allowed_dir" ]]; then
+      allowed=1
+      break
+    fi
+  done
+  if [[ $allowed -eq 0 ]]; then
+    echo "WARN: Unexpected top-level directory: $dirname (document in AGENTS.md or plans/ if intentional)"
+  fi
+done < <(find "$REPO_ROOT" -maxdepth 1 -mindepth 1 -type d -not -name ".*" -print0)
+
+if [[ $FAILED -eq 1 ]]; then
+  echo "check_no_forbidden_top_level_dirs: FAIL"
+  exit 1
+fi
+
+echo "check_no_forbidden_top_level_dirs: PASS"
+exit 0

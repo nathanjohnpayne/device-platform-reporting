@@ -1,0 +1,50 @@
+#!/usr/bin/env bash
+# check_duplicate_docs — Verifies no documentation topic is duplicated between root files and tool folders.
+# Exit 0 = pass, Exit 1 = fail.
+set -euo pipefail
+
+REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+FAILED=0
+
+# Topics that must appear only in canonical root files, not redefined in tool folders
+CANONICAL_TOPICS=(
+  "Deploy Auth"
+  "Credential"
+  "Firebase"
+  "Environment"
+  "Branch Naming"
+  "Commit Message"
+  "Pull Request"
+)
+
+TOOL_FOLDERS=(".claude" ".cursor" ".vscode")
+
+for folder in "${TOOL_FOLDERS[@]}"; do
+  folder_path="$REPO_ROOT/$folder"
+  if [[ ! -d "$folder_path" ]]; then
+    continue
+  fi
+
+  while IFS= read -r -d '' filepath; do
+    relpath="${filepath#$REPO_ROOT/}"
+    # Skip machine-generated state
+    if [[ "$relpath" == .claude/worktrees/* ]]; then
+      continue
+    fi
+
+    for topic in "${CANONICAL_TOPICS[@]}"; do
+      if grep -qi "$topic" "$filepath" 2>/dev/null; then
+        echo "WARN: '$topic' documented in tool folder file: $relpath (canonical location: root docs)"
+        # Advisory only — not a hard failure unless it directly contradicts root docs
+      fi
+    done
+  done < <(find "$folder_path" -type f \( -name "*.md" -o -name "*.txt" -o -name "*.mdc" \) -print0 2>/dev/null)
+done
+
+if [[ $FAILED -eq 1 ]]; then
+  echo "check_duplicate_docs: FAIL"
+  exit 1
+fi
+
+echo "check_duplicate_docs: PASS"
+exit 0

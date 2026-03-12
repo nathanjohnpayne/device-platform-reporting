@@ -1,0 +1,23 @@
+#!/usr/bin/env bash
+# check_required_root_files — Verifies all canonical root files exist.
+# Exit 0 = pass, Exit 1 = fail.
+set -euo pipefail
+
+REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+REQUIRED_FILES=("README.md" "AGENTS.md" "DEPLOYMENT.md" "CONTRIBUTING.md" ".ai_context.md")
+FAILED=0
+
+for file in "${REQUIRED_FILES[@]}"; do
+  if [[ ! -f "$REPO_ROOT/$file" ]]; then
+    echo "FAIL: Missing required root file: $file"
+    FAILED=1
+  fi
+done
+
+if [[ $FAILED -eq 1 ]]; then
+  echo "check_required_root_files: FAIL"
+  exit 1
+fi
+
+echo "check_required_root_files: PASS"
+exit 0
