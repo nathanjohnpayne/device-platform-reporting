@@ -41,6 +41,8 @@ Replaces 30–45 minutes of manual Monday-morning work with a 5-minute upload-an
 Node.js 18+
 npm 9+
 Firebase CLI: npm install -g firebase-tools
+Google Cloud SDK (`gcloud`) for deploy auth bootstrap / ADC refresh
+1Password desktop app + 1Password CLI (`op`) for deployers
 ```
 
 ### 2. Clone / unzip the project
@@ -78,15 +80,19 @@ Firebase Console → Storage → Get started → Production mode.
 ### 6. Build and deploy
 
 ```bash
+# One-time per project for deploy maintainers
+op-firebase-setup device-platform-reporting
+
 set -a
 source .env
 set +a
 npm run build
-firebase login
-firebase deploy
+npm run deploy
 ```
 
 The app will be live at: `https://device-platform-reporting.web.app`
+
+`npm run deploy` uses `op-firebase-deploy`, which reads deploy auth from 1Password instead of requiring `firebase login`.
 
 ---
 
@@ -102,6 +108,14 @@ npm start
 
 Note: Google Sign-In requires the domain to be in the authorized list.  
 Add `localhost` in Firebase Console → Authentication → Settings → Authorized domains.
+
+## 1Password deploy and secret flow
+
+- Deploy maintainers should install `op`, sign into 1Password, and have access to the `Private` vault.
+- `op-firebase-setup device-platform-reporting` creates the deployer service account and stores its JSON key in `Private/Firebase Deploy - device-platform-reporting`.
+- `npm run deploy` / `npm run deploy:hosting` call `op-firebase-deploy`, which uses that per-project item first and falls back to `Private/GCP ADC`.
+- If `Private/GCP ADC` is used and expires, refresh it with `gcloud auth application-default login --project=device-platform-reporting` and update the item with `op item edit "GCP ADC" --vault Private "credential=$(cat ~/.config/gcloud/application_default_credentials.json)"`.
+- For future APIs or services, keep committed templates only, for example `.env.tpl` or `config.runtime.tpl`, with `op://Private/<item>/<field>` references. Resolve them at deploy time with `op inject -i <template> -o <gitignored-file> -f`.
 
 ---
 
@@ -232,6 +246,7 @@ npm test
 - Keep live Firebase values in local `.env` only. [`src/firebase.js`](/Users/nathanpayne/GitHub/device-platform-reporting/src/firebase.js) should contain code paths and defaults, not real keys.
 - Keep browser-key restrictions enabled in Google Cloud Credentials.
 - If the key is exposed: remove it from source/history, create a replacement key with the same referrer/API restrictions, update `.env`, source the file, rebuild/redeploy, verify the live bundle, then delete the old key.
+- `npm test` now includes a tracked-file secret scan so committed API keys, OAuth tokens, and private keys fail the normal test run.
 
 ---
 

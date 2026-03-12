@@ -6,9 +6,12 @@
   "scripts": {
     "start": "webpack serve --mode development",
     "build": "webpack --mode production",
-    "test": "jest --runInBand",
+    "test": "jest --runInBand && node scripts/check-no-public-secrets.mjs",
     "test:watch": "jest --watch",
-    "test:coverage": "jest --coverage"
+    "test:coverage": "jest --coverage && node scripts/check-no-public-secrets.mjs",
+    "test:secrets": "node scripts/check-no-public-secrets.mjs",
+    "deploy": "op-firebase-deploy",
+    "deploy:hosting": "op-firebase-deploy --only hosting"
   },
   "keywords": [],
   "author": "",

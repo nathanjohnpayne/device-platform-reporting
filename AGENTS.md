@@ -28,14 +28,24 @@ The codebase is intentionally simple. Keep changes aligned with the existing cli
 - Install deps: `npm install`
 - Start dev server: `npm start`
 - Production build: `npm run build`
-- Deploy hosting + rules: `firebase deploy`
+- Test + tracked-file secret scan: `npm test`
+- Deploy hosting + rules: `npm run deploy`
+- Deploy hosting only: `npm run deploy:hosting`
+
+## Deploy Auth And 1Password
+
+- Deploy maintainers need `firebase-tools`, Google Cloud SDK (`gcloud`), the 1Password CLI (`op`), and access to the `Private` vault in 1Password.
+- `npm run deploy` and `npm run deploy:hosting` wrap `op-firebase-deploy` for non-interactive Firebase/GCloud auth. The script looks for `Private/Firebase Deploy - device-platform-reporting` first, then falls back to `Private/GCP ADC`.
+- First-time setup: run `op-firebase-setup device-platform-reporting`. It creates `firebase-deployer@device-platform-reporting.iam.gserviceaccount.com`, grants deploy roles, generates a key, and stores it in 1Password.
+- If the fallback ADC path is used and goes stale, refresh it with `gcloud auth application-default login --project=device-platform-reporting`, then write the new JSON back to `Private/GCP ADC`.
+- For future APIs or services, commit only template files with `op://` references and resolve them with `op inject` into a gitignored runtime file during deploy. Never commit the resolved output.
 
 ## Environment And Firebase
 
 - Firebase initialization lives in [`src/firebase.js`](/Users/nathanpayne/GitHub/device-platform-reporting/src/firebase.js).
 - The app expects `REACT_APP_FIREBASE_*` variables for at least `API_KEY`, `APP_ID`, and `MEASUREMENT_ID`.
 - Use [`.env.example`](/Users/nathanpayne/GitHub/device-platform-reporting/.env.example) as the starting point, then copy it to a local `.env` file (gitignored).
-- Webpack reads `REACT_APP_FIREBASE_*` from the shell at build time. Source/export `.env` before `npm start`, `npm run build`, or `firebase deploy`.
+- Webpack reads `REACT_APP_FIREBASE_*` from the shell at build time. Source/export `.env` before `npm start`, `npm run build`, or `npm run deploy`.
 - Allowed login domains are enforced in both client code and Firebase rules:
   - `disney.com`
   - `disneystreaming.com`
@@ -207,6 +217,7 @@ Current collection usage in code:
 ## Verification Expectations
 
 - At minimum, run `npm run build` after code changes.
+- `npm test` includes a tracked-file secret scan for accidentally committed API keys, OAuth tokens, and private keys.
 - If you modify parsing or chart logic, test the affected route manually with representative CSVs if available.
 - Since there is no real automated test suite, leave clear notes in the final response about what you did and did not verify.
 
