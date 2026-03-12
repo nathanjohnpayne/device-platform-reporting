@@ -59,7 +59,6 @@ function HistoryTable({ title, collectionName, columns }) {
           <p>Records appear here after you complete a workflow and the import auto-saves.</p>
         </div>
       ) : (
-<<<<<<< HEAD
         <div style={{ overflowX: 'auto' }}>
           <table className="data-table">
             <thead>
@@ -80,20 +79,6 @@ function HistoryTable({ title, collectionName, columns }) {
             </tbody>
           </table>
         </div>
-=======
-        renderTable(activeRows)
-      )}
-      {!loading && supersededRows.length > 0 && (
-        <details style={{ marginTop: 12 }}>
-          <summary style={{ cursor: 'pointer', fontSize: 13, color: '#64748b', padding: '4px 0' }}>
-            Replaced uploads ({supersededRows.length})
-          </summary>
-          <div className="alert alert-info" style={{ margin: '8px 0 4px', fontSize: 12 }}>
-            These snapshots were replaced via "Use new upload" and are kept for {ROLLBACK_WINDOW_DAYS} days from replacement.
-          </div>
-          {renderTable(supersededRows, true)}
-        </details>
->>>>>>> 713cd06 (Fix import timestamp validation and rollback copy)
       )}
     </div>
   );
