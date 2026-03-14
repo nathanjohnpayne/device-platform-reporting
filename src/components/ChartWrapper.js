@@ -51,29 +51,19 @@ export default function ChartWrapper({ title, height = 280, children }) {
   const chart = React.cloneElement(child, { width: 800, height });
 
   return (
-    <div style={{ position: 'relative', width: 800, overflowX: 'auto', marginBottom: 8 }}>
-      <div ref={containerRef}>
-        {chart}
+    <div className="chart-wrapper">
+      <div className="chart-wrapper__viewport">
+        <div ref={containerRef} className="chart-wrapper__canvas">
+          {chart}
+        </div>
       </div>
       <button
         onClick={handleCopy}
         disabled={busy}
         title={copied ? 'Copied!' : `Copy chart: ${title}`}
-        style={{
-          position: 'absolute',
-          top: 6,
-          right: 6,
-          background: 'rgba(15, 39, 68, 0.7)',
-          border: '1px solid #334155',
-          borderRadius: 4,
-          color: copied ? '#4ade80' : '#94a3b8',
-          cursor: busy ? 'default' : 'pointer',
-          fontSize: 12,
-          padding: '3px 7px',
-          lineHeight: 1.4,
-        }}
+        className={`chart-copy-button${copied ? ' is-copied' : ''}`}
       >
-        {copied ? '✓' : '⎘'}
+        {busy ? 'Copying...' : copied ? 'Copied' : 'Copy chart'}
       </button>
     </div>
   );

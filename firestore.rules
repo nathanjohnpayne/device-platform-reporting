@@ -56,7 +56,7 @@ service cloud.firestore {
 
     match /weeklySnapshots/{document} {
       allow read: if isAllowedUser();
-      allow create: if requestOwnsDocument() && createUsesServerTimestamp(request.resource.data.uploadedAt);
+      allow create: if requestOwnsDocument() && createUsesServerTimestamp('uploadedAt');
       allow update: if resourceOwnedByCaller()
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['supersededAt']);
       allow delete: if resourceOwnedByCaller() && withinRollbackWindow(resource.data.uploadedAt);
@@ -64,7 +64,7 @@ service cloud.firestore {
 
     match /adkVersionShare/{document} {
       allow read: if isAllowedUser();
-      allow create: if requestOwnsDocument() && createUsesServerTimestamp(request.resource.data.uploadedAt);
+      allow create: if requestOwnsDocument() && createUsesServerTimestamp('uploadedAt');
       allow update: if resourceOwnedByCaller()
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['supersededAt']);
       allow delete: if resourceOwnedByCaller() && withinRollbackWindow(resource.data.uploadedAt);
@@ -72,7 +72,7 @@ service cloud.firestore {
 
     match /partnerMigration/{document} {
       allow read: if isAllowedUser();
-      allow create: if requestOwnsDocument() && createUsesServerTimestamp(request.resource.data.uploadedAt);
+      allow create: if requestOwnsDocument() && createUsesServerTimestamp('uploadedAt');
       allow update: if resourceOwnedByCaller()
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['supersededAt']);
       allow delete: if resourceOwnedByCaller() && withinRollbackWindow(resource.data.uploadedAt);
@@ -80,7 +80,7 @@ service cloud.firestore {
 
     match /monthlySnapshots/{document} {
       allow read: if isAllowedUser();
-      allow create: if requestOwnsDocument() && createUsesServerTimestamp(request.resource.data.uploadedAt);
+      allow create: if requestOwnsDocument() && createUsesServerTimestamp('uploadedAt');
       allow update: if resourceOwnedByCaller()
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['supersededAt']);
       allow delete: if resourceOwnedByCaller() && withinRollbackWindow(resource.data.uploadedAt);
@@ -88,7 +88,7 @@ service cloud.firestore {
 
     match /importBatches/{document} {
       allow read: if isAllowedUser();
-      allow create: if requestOwnsDocument() && createUsesServerTimestamp(request.resource.data.uploadedAt);
+      allow create: if requestOwnsDocument() && createUsesServerTimestamp('uploadedAt');
       allow update: if resourceOwnedByCaller()
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['supersededAt']);
       allow delete: if resourceOwnedByCaller() && withinRollbackWindow(resource.data.uploadedAt);
@@ -97,24 +97,24 @@ service cloud.firestore {
     match /importBatchRollbacks/{document} {
       allow read: if isAllowedUser();
       allow create: if requestOwnsDocument()
-        && createUsesServerTimestamp(request.resource.data.rolledBackAt)
+        && createUsesServerTimestamp('rolledBackAt')
         && importBatchOwnedByCaller(document)
         && importBatchWithinRollbackWindow(document);
     }
 
     match /legacyWorkbookImportBatches/{document} {
       allow read: if isAllowedUser();
-      allow create: if requestOwnsDocument() && createUsesServerTimestamp(request.resource.data.importedAt);
+      allow create: if requestOwnsDocument() && createUsesServerTimestamp('importedAt');
     }
 
     match /legacyWorkbookSheets/{document} {
       allow read: if isAllowedUser();
-      allow create: if requestOwnsDocument() && createUsesServerTimestamp(request.resource.data.importedAt);
+      allow create: if requestOwnsDocument() && createUsesServerTimestamp('importedAt');
     }
 
     match /legacyWorkbookImports/{document} {
       allow read: if isAllowedUser();
-      allow create: if requestOwnsDocument() && createUsesServerTimestamp(request.resource.data.importedAt);
+      allow create: if requestOwnsDocument() && createUsesServerTimestamp('importedAt');
       allow update: if resourceOwnedByCaller() && withinRollbackWindow(resource.data.importedAt);
       allow delete: if resourceOwnedByCaller() && withinRollbackWindow(resource.data.importedAt);
     }
