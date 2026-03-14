@@ -113,8 +113,7 @@ Add `localhost` in Firebase Console → Authentication → Settings → Authoriz
 
 - Deploy maintainers should install `op`, sign into 1Password, and have access to the `Private` vault.
 - `op-firebase-setup device-platform-reporting` creates the deployer service account and stores its JSON key in `Private/Firebase Deploy - device-platform-reporting`.
-- `npm run deploy` / `npm run deploy:hosting` call `op-firebase-deploy`, which uses that per-project item first and falls back to `Private/GCP ADC`.
-- If `Private/GCP ADC` is used and expires, refresh it with `gcloud auth application-default login --project=device-platform-reporting` and update the item with `op item edit "GCP ADC" --vault Private "credential=$(cat ~/.config/gcloud/application_default_credentials.json)"`.
+- `npm run deploy` / `npm run deploy:hosting` call `op-firebase-deploy`, which reads `Private/Firebase Deploy - device-platform-reporting` and sets `GOOGLE_APPLICATION_CREDENTIALS`. No browser auth required.
 - For future APIs or services, keep committed templates only, for example `.env.tpl` or `config.runtime.tpl`, with `op://Private/<item>/<field>` references. Resolve them at deploy time with `op inject -i <template> -o <gitignored-file> -f`.
 
 ---

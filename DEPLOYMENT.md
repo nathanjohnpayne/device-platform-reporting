@@ -1,18 +1,20 @@
 # Deployment
 
+> This guide covers deploying the existing project. For **new project setup** (create Firebase project, `firebase init`, first-time credential setup), see `ai_agent_repo_template/DEPLOYMENT.md` in the sibling directory.
+
 ## Prerequisites
 
 - [Firebase CLI](https://firebase.google.com/docs/cli) (`firebase-tools`) installed globally
 - [1Password CLI](https://developer.1password.com/docs/cli/) (`op`) installed and signed in
 - Google Cloud SDK (`gcloud`) installed
 - `op-firebase-deploy` script on PATH (see First-Time Setup below)
-- Access to the `Private` vault in 1Password: `Private/Firebase Deploy - device-platform-reporting` and `Private/GCP ADC`
+- Access to the `Private` vault in 1Password: `Private/Firebase Deploy - device-platform-reporting`
 
 ## Environments
 
 | Environment | Firebase Project | URL |
 |-------------|-----------------|-----|
-| Production | `device-platform-reporting` | Firebase Hosting URL |
+| Production | `device-platform-reporting` | https://device-platform-reporting.web.app |
 
 There is no staging environment. All deploys go directly to production.
 
@@ -32,7 +34,7 @@ Build output goes to `dist/`. Never edit `dist/` directly.
 
 ## Deployment Steps
 
-All deploys use `op-firebase-deploy` for non-interactive 1Password auth. The deploy commands run the build automatically.
+All deploys use `op-firebase-deploy` for non-interactive 1Password auth. The deploy commands do not run the build automatically, so run `npm run build` first.
 
 ```bash
 # Full deploy (hosting + Firestore rules)
@@ -74,7 +76,7 @@ Or use the Firebase Console → Hosting → Release History → Roll back.
 
 ## Post-Deployment Verification
 
-1. Open the live app URL in an incognito window
+1. Open https://device-platform-reporting.web.app in an incognito window
 2. Sign in with a Disney Streaming Google account — confirm authentication works
 3. Navigate to each workflow page — confirm they load without errors
 4. Test a CSV upload on one workflow page — confirm parsing and chart rendering
@@ -99,11 +101,5 @@ If a browser API key is exposed:
 3. Create a replacement browser key in Google Cloud Credentials with the same restrictions (HTTP referrers: approved Hosting/local domains + Firebase API allowlist)
 4. Update local `.env`, source it, rebuild and redeploy
 5. Verify the live bundle serves the new key only, then delete the old key
-
-If the deploy ADC credential (`Private/GCP ADC`) goes stale:
-```bash
-gcloud auth application-default login --project=device-platform-reporting
-# Then update the 1Password item
-```
 
 For future services requiring secrets, commit only template files with `op://` references and resolve them with `op inject` into a gitignored runtime file at deploy time. Never commit the resolved output.
