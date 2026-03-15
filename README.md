@@ -42,7 +42,6 @@ Node.js 18+
 npm 9+
 Firebase CLI: npm install -g firebase-tools
 Google Cloud SDK (`gcloud`) for deploy auth bootstrap / ADC refresh
-1Password desktop app + 1Password CLI (`op`) for deployers
 ```
 
 ### 2. Clone / unzip the project
@@ -80,6 +79,17 @@ Firebase Console → Storage → Get started → Production mode.
 ### 6. Build and deploy
 
 ```bash
+# Install the canonical helper scripts once per machine
+mkdir -p ~/.local/bin
+cp ../ai_agent_repo_template/scripts/gcloud/gcloud ~/.local/bin/gcloud
+cp ../ai_agent_repo_template/scripts/firebase/op-firebase-deploy ~/.local/bin/
+cp ../ai_agent_repo_template/scripts/firebase/op-firebase-setup ~/.local/bin/
+chmod +x ~/.local/bin/gcloud ~/.local/bin/op-firebase-deploy ~/.local/bin/op-firebase-setup
+hash -r
+
+# One-time per maintainer/machine
+gcloud auth application-default login
+
 # One-time per project for deploy maintainers
 op-firebase-setup device-platform-reporting
 
@@ -92,7 +102,7 @@ npm run deploy
 
 The app will be live at: `https://device-platform-reporting.web.app`
 
-`npm run deploy` uses `op-firebase-deploy`, which reads deploy auth from 1Password instead of requiring `firebase login`.
+`npm run deploy` uses `op-firebase-deploy`, which now creates a short-lived impersonated credential for `firebase-deployer@device-platform-reporting.iam.gserviceaccount.com` from local ADC instead of requiring `firebase login`.
 
 ---
 
@@ -109,11 +119,12 @@ npm start
 Note: Google Sign-In requires the domain to be in the authorized list.  
 Add `localhost` in Firebase Console → Authentication → Settings → Authorized domains.
 
-## 1Password deploy and secret flow
+## Deploy auth and future-secret flow
 
-- Deploy maintainers should install `op`, sign into 1Password, and have access to the `Private` vault.
-- `op-firebase-setup device-platform-reporting` creates the deployer service account and stores its JSON key in `Private/Firebase Deploy - device-platform-reporting`.
-- `npm run deploy` / `npm run deploy:hosting` call `op-firebase-deploy`, which reads `Private/Firebase Deploy - device-platform-reporting` and sets `GOOGLE_APPLICATION_CREDENTIALS`. No browser auth required.
+- Deploy maintainers should install `firebase-tools`, `gcloud`, and the canonical helper scripts from `../ai_agent_repo_template/scripts/`.
+- `gcloud auth application-default login` bootstraps local ADC for the machine.
+- `op-firebase-setup device-platform-reporting` creates the deployer service account, grants deploy roles, and grants the current maintainer impersonation rights.
+- `npm run deploy` / `npm run deploy:hosting` call `op-firebase-deploy`, which creates a temporary impersonated credential for `firebase-deployer@device-platform-reporting.iam.gserviceaccount.com`.
 - For future APIs or services, keep committed templates only, for example `.env.tpl` or `config.runtime.tpl`, with `op://Private/<item>/<field>` references. Resolve them at deploy time with `op inject -i <template> -o <gitignored-file> -f`.
 
 ---

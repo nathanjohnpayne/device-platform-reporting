@@ -186,7 +186,7 @@ scripts/ci/check_duplicate_docs
 
 ## 6. Deployment Process
 
-Deploy requires `firebase-tools`, Google Cloud SDK (`gcloud`), the 1Password CLI (`op`), and access to the `Private` vault in 1Password.
+Deploy requires `firebase-tools`, Google Cloud SDK (`gcloud`), the local `gcloud` wrapper, and access to impersonate `firebase-deployer@device-platform-reporting.iam.gserviceaccount.com`.
 
 ```bash
 # Full deploy (hosting + Firestore rules)
@@ -196,13 +196,14 @@ npm run deploy
 npm run deploy:hosting
 ```
 
-Both commands wrap `op-firebase-deploy` for non-interactive Firebase/GCloud auth via 1Password biometric (Touch ID). No `firebase login` or browser prompts needed.
+Both commands wrap `op-firebase-deploy` for non-interactive Firebase/GCloud auth via short-lived service account impersonation. No `firebase login` or browser prompts are required once local ADC is initialized.
 
 **First-time setup:**
 ```bash
+gcloud auth application-default login
 op-firebase-setup device-platform-reporting
 ```
-Creates `firebase-deployer@device-platform-reporting.iam.gserviceaccount.com`, grants deploy roles, generates a key, and stores it in 1Password as `Private/Firebase Deploy - device-platform-reporting`.
+Creates `firebase-deployer@device-platform-reporting.iam.gserviceaccount.com`, grants deploy roles, grants your user impersonation rights, and creates a dedicated `gcloud` config.
 
 **Environment variables:** Firebase config lives in local `.env` (gitignored). Source it before build or deploy:
 ```bash
