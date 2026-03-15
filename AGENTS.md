@@ -198,6 +198,8 @@ npm run deploy:hosting
 
 Both commands wrap `op-firebase-deploy` for non-interactive Firebase/GCloud auth via short-lived service account impersonation. No `firebase login` or routine browser prompts are required once the shared 1Password-backed `Private/GCP ADC` source credential is in place.
 
+The 1Password-first deploy-auth model is a deliberate repository invariant. Do not switch this repo back to ADC-first, routine browser-login, `firebase login`, or long-lived deploy-key auth without explicit human approval.
+
 **First-time setup:**
 ```bash
 op-firebase-setup device-platform-reporting

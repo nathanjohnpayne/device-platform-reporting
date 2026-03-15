@@ -104,6 +104,8 @@ The app will be live at: `https://device-platform-reporting.web.app`
 
 `npm run deploy` uses `op-firebase-deploy`, which now creates a short-lived impersonated credential for `firebase-deployer@device-platform-reporting.iam.gserviceaccount.com` from a 1Password-backed GCP ADC source credential or another explicit `GOOGLE_APPLICATION_CREDENTIALS` file instead of requiring `firebase login`.
 
+The 1Password-first deploy-auth model is intentional for this repo. Do not switch it back to ADC-first or deploy-key-based guidance unless a human explicitly requests that change.
+
 ---
 
 ## Local development
