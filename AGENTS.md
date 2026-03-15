@@ -196,11 +196,10 @@ npm run deploy
 npm run deploy:hosting
 ```
 
-Both commands wrap `op-firebase-deploy` for non-interactive Firebase/GCloud auth via short-lived service account impersonation. No `firebase login` or browser prompts are required once local ADC is initialized.
+Both commands wrap `op-firebase-deploy` for non-interactive Firebase/GCloud auth via short-lived service account impersonation. No `firebase login` or routine browser prompts are required once the shared 1Password-backed `Private/GCP ADC` source credential is in place.
 
 **First-time setup:**
 ```bash
-gcloud auth application-default login
 op-firebase-setup device-platform-reporting
 ```
 Creates `firebase-deployer@device-platform-reporting.iam.gserviceaccount.com`, grants deploy roles, grants your user impersonation rights, and creates a dedicated `gcloud` config.

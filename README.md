@@ -88,7 +88,7 @@ chmod +x ~/.local/bin/gcloud ~/.local/bin/op-firebase-deploy ~/.local/bin/op-fir
 hash -r
 
 # One-time per maintainer/machine
-gcloud auth application-default login
+# Make sure 1Password CLI can read Private/GCP ADC -> credential
 
 # One-time per project for deploy maintainers
 op-firebase-setup device-platform-reporting
@@ -102,7 +102,7 @@ npm run deploy
 
 The app will be live at: `https://device-platform-reporting.web.app`
 
-`npm run deploy` uses `op-firebase-deploy`, which now creates a short-lived impersonated credential for `firebase-deployer@device-platform-reporting.iam.gserviceaccount.com` from local ADC instead of requiring `firebase login`.
+`npm run deploy` uses `op-firebase-deploy`, which now creates a short-lived impersonated credential for `firebase-deployer@device-platform-reporting.iam.gserviceaccount.com` from a 1Password-backed GCP ADC source credential or another explicit `GOOGLE_APPLICATION_CREDENTIALS` file instead of requiring `firebase login`.
 
 ---
 
@@ -122,7 +122,7 @@ Add `localhost` in Firebase Console → Authentication → Settings → Authoriz
 ## Deploy auth and future-secret flow
 
 - Deploy maintainers should install `firebase-tools`, `gcloud`, and the canonical helper scripts from `../ai_agent_repo_template/scripts/`.
-- `gcloud auth application-default login` bootstraps local ADC for the machine.
+- The normal maintainer flow reads the shared `Private/GCP ADC` source credential through the 1Password CLI, so routine deploy work does not need browser login once that item exists.
 - `op-firebase-setup device-platform-reporting` creates the deployer service account, grants deploy roles, and grants the current maintainer impersonation rights.
 - `npm run deploy` / `npm run deploy:hosting` call `op-firebase-deploy`, which creates a temporary impersonated credential for `firebase-deployer@device-platform-reporting.iam.gserviceaccount.com`.
 - For future APIs or services, keep committed templates only, for example `.env.tpl` or `config.runtime.tpl`, with `op://Private/<item>/<field>` references. Resolve them at deploy time with `op inject -i <template> -o <gitignored-file> -f`.
